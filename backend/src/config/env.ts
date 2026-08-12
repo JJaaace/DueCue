@@ -6,6 +6,7 @@ const schema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1).default("postgresql://localhost:5432/duecue"),
   FRONTEND_URL: z.string().url().default("http://localhost:5173"),
+  PUBLIC_API_URL: z.string().url().default("http://localhost:4000"),
   AUTH_MODE: z.enum(["dev", "clerk"]).default("dev"),
   EMAIL_MODE: z.enum(["preview", "resend"]).default("preview"),
   RESEND_API_KEY: z.string().optional(),

@@ -1,20 +1,65 @@
 # DueCue architecture
 
-## Phase 1–3 flow
+## System overview
 
 ```txt
-MockCanvasProvider → Provider DTOs → Sync Engine → PostgreSQL
-                                          ├─ Course / AcademicTask upserts
-                                          ├─ TaskEvent change audit trail
-                                          └─ SyncRun operational history
+Browser (React + Vite)
+  Home · Work · Import · Calendar · task drawer
+                     │ HTTPS / JSON
+                     ▼
+Express API ────────────────────────────────────────────┐
+  data · sync · imports · feedback · notifications       │
+  calendar · demo · health                               │
+                     │ Prisma                            │
+                     ▼                                   │
+PostgreSQL: users, settings, courses, tasks, events,     │
+recommendations, feedback, notifications, tokens         │
+                                                         │
+Provider registry ── MockCanvasProvider                  │
+                 └─ manual JSON / ICS normalization ────┘
 ```
 
-The frontend and API are independent npm workspaces. The backend uses a `CourseProvider` boundary so source adapters do not depend on Prisma. The sync engine resolves provider course IDs, safely upserts external identities per user/provider, compares mutable task fields, and records each change as its own event. Missing source tasks are soft-removed to preserve history.
+## Frontend
 
-`MockCanvasProvider` uses relative dates, so the demo remains current. Its `mockStage` connection configuration controls a repeatable four-step change story. It contains no official Canvas access and no credentials.
+The Vite/React workspace is a focused student workspace with four routes: **Home**, **Work**, **Import**, and **Calendar**. `App.tsx` owns API loading, demo sync, the selected task drawer, onboarding, and the recruiter-demo reset. The task drawer is the explanation surface: it displays task data, recommendation factors, reminder previews, sync events, and feedback actions.
 
-The recommendation engine is deterministic: task type establishes a base lead time, then style, points, difficulty, source changes, and scoped feedback preferences adjust it. It persists a recommendation and updates task status when the start window opens.
+The frontend reads `VITE_API_BASE_URL`; when unset, it uses Vite's local API proxy. It displays endpoint/status context for development fetch failures.
 
-Feedback writes an immutable response plus a bounded `LearningPreference`; later calculations prioritize course+task type, task type, course, then global preferences. Notification generation is a preview-first service with a real delivery boundary reserved for a future email adapter. The calendar service uses a revocable 32-byte token and returns standards-compatible ICS due/start events.
+## API and persistence
 
-`jobs/scheduler.ts` is backend-owned. Set `ENABLE_JOBS=true` to run local mock sync every 30 minutes and refresh recommendations/previews hourly; it is intentionally disabled by default in demo mode.
+The Express API is grouped by domain: data, sync, recommendations, feedback, notifications, imports, calendar, demo, and health. Prisma maps the relational PostgreSQL model.
+
+Key records:
+
+- `AcademicTask` is identified by user, provider, and source external ID.
+- `TaskEvent` retains create, deadline, points, removal, and update history.
+- `Recommendation` stores its version, start time, scores, explanation, and input factors.
+- `LearningPreference` stores bounded feedback-derived lead-time adjustments.
+- `Notification` stores previews/delivery state and recommendation linkage for deduplication.
+- `CalendarToken` creates private, revocable ICS-feed URLs.
+
+## Provider and sync boundary
+
+`CourseProvider` returns source-shaped course/task DTOs without database dependencies. `MockCanvasProvider` is the current implementation and supplies relative-date demo data plus a repeatable four-stage change story. Manual JSON and ICS are normalized into the same academic-task shape.
+
+The sync engine owns transactional course/task upserts, comparison of mutable task fields, soft removal, `TaskEvent` creation, and `SyncRun` bookkeeping. This keeps future approved provider adapters independent of persistence behavior.
+
+## Recommendations and learning
+
+`recommendationEngine.ts` is deterministic and testable. Base lead time comes from task type; it is adjusted within safe bounds for reminder style, points, effort, task/course difficulty, deadline changes, and learned preferences. It returns:
+
+- recommended start time and lead days
+- priority and confidence scores
+- student-readable explanation
+- list of contributing factors
+- start-now/overdue status
+
+`feedbackService.ts` records immutable feedback, updates a scoped learning preference, and recalculates the user's active recommendations.
+
+## Notifications and calendar
+
+The notification service is preview-first and deduplicates by recipient, task, notification type, and recommendation version. Start Window Open is the primary email template; Due Soon, Deadline Changed, and Weekly Digest have a shared template boundary. Start-window feedback links use opaque, one-time, expiring database-backed tokens scoped to the owner/task/recommendation/notification. The public confirmation route consumes the token and records feedback for the token owner—not the clicker’s identity. Resend delivery is isolated behind environment configuration; preview mode is default. The calendar service generates downloadable ICS content and revocable private feed tokens containing due and recommended-start events.
+
+## Security and integration boundary
+
+Local development uses a seeded demo user. Production configuration rejects dev auth and reserves `AUTH_MODE=clerk` for verified identity integration. DueCue never scrapes school systems, automates logins, or stores school passwords. Canvas OAuth is a future approved integration, not an implemented claim.

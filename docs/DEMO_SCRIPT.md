@@ -1,12 +1,29 @@
-# DueCue demo script
+# DueCue: 2–3 minute demo script
 
-1. Start at the dashboard and call out the `SIMULATED CANVAS DEMO` label. Explain that DueCue uses source-shaped data today and deliberately does not scrape school systems.
-2. Point to the main cue card: it shows what to start, the score, and a human-readable reason—not generic calendar events.
-3. Open a task. Show its recommended start window and submit **Too early**, **About right**, or **Too late**.
-4. Open Insights. Explain that the feedback creates a confidence-weighted timing preference by task type.
-5. Click **Run sync**. Progress through the story: stage 2 adds CSE Project 2, stage 3 moves MATH Quiz 2 earlier, and stage 4 increases the English essay’s points.
-6. Return to Overview. Show the sync activity feed and explain that each source change is recorded as a task event and triggers new recommendations/reminder previews.
-7. Open Notifications. Generate previews and show that delivery is intentionally preview-only in local demo mode.
-8. Open Calendar. Download an ICS file or generate a private, revocable feed token. The feed includes due and recommended-start events.
+## Before the demo
 
-Close with: “DueCue watches course data, tells students when to begin, and gets more personal through feedback. Official LMS access is intentionally a future approved integration.”
+Run `npm run db:seed` if you need a clean local baseline, then `npm run dev`. Open the frontend and use **Reset recruiter demo** if a prior walkthrough changed the staged data.
+
+## 0:00–0:25 — Problem and Home
+
+“Calendars show when work is due. DueCue helps students decide when to begin.” Point to **Next Cue**, the start window, score, and the summary of work worth starting today. Note that this is simulated CarmenCanvas-style data, not an official school integration.
+
+## 0:25–1:05 — Explain the intelligence
+
+Click **See why**. Show the recommended start time, cue score, and plain-language explanation. Point out effort, points, task level, and course load. Explain that the engine also uses task type, deadline, source changes, and feedback—and shows its factors instead of hiding them.
+
+Click **About right**. Show the confirmation: “Got it — DueCue will adjust future cues like this.”
+
+## 1:05–1:40 — Show change detection
+
+Click **Run demo sync**. Explain the staged story: a new CSE project appears, then a MATH quiz moves earlier, then essay points increase. Show **Recent Changes**, then open the affected task to show its per-task sync history and adjusted timing.
+
+## 1:40–2:15 — Show safe real-data path
+
+Open **Import**. “DueCue deliberately does not scrape Canvas or request school passwords. Students can use demo data, paste validated task JSON, or import user-authorized ICS content. Official OAuth is a future approved path.”
+
+Open **Calendar** and show `.ics` download/private revocable feed plus reminder preferences. Mention that notifications are preview-first by default.
+
+## Close
+
+“DueCue combines provider-based sync, explainable timing recommendations, and feedback-driven learning to answer the more useful student question: what should I start next?”

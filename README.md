@@ -1,123 +1,107 @@
 # DueCue
 
-> Personalized academic reminders that learn when you should start.
+> An adaptive academic deadline assistant that helps students decide when to start—not merely when work is due.
 
-DueCue is an adaptive academic deadline assistant. It ingests course work from provider adapters, detects deadline changes, calculates a useful start window before a task is due, previews proactive reminders, and adapts timing from feedback.
+DueCue turns coursework into clear start windows, explains each recommendation, detects source changes, previews reminders, and learns from timing feedback. It is a portfolio-ready React, Express, Prisma, and PostgreSQL project with a safe simulated CarmenCanvas-style demo workspace.
 
-## Why DueCue is not just a calendar
+> **Unofficial demo:** DueCue is OSU/Buckeye-inspired visually, but is not affiliated with Ohio State, CarmenCanvas, or Canvas. It does not scrape school systems or collect school credentials.
 
-Calendars show when something is due. DueCue is designed to decide when to begin, watch source data for changes, and eventually adapt that timing from feedback. The core product story is: sync coursework → notice a change → calculate the right cue → learn from the response.
+## Screenshots
 
-## Core features
+Add screenshots here before sharing publicly:
 
-- TypeScript npm-workspace monorepo: React/Vite frontend and Express API
-- Prisma/PostgreSQL schema for users, courses, tasks, provider connections, sync runs, task events, recommendations, notifications, feedback, learning preferences, and revocable calendar tokens
-- Explicit dev-auth fallback (`demo@duecue.local`), with no school credentials or scraping
-- `MockCanvasProvider` with 5 courses and 21 relative-date tasks
-- Four demo stages: baseline, new CSE project, earlier MATH quiz, and increased ENGLISH essay points
-- Transactional task upserts, soft-removal detection, and granular change events
-- Deterministic recommendation engine with priority/confidence scores and human-readable explanations
-- Feedback loop that stores scoped learning preferences and recalculates future cues
-- Preview-first notification pipeline, private revocable ICS calendar feeds, and optional local job scheduling
-- Responsive dashboard, courses, task detail, notifications, insights, and calendar pages
+| Home and Next Cue | Task detail and reasoning |
+| --- | --- |
+| `docs/screenshots/home.png` *(placeholder)* | `docs/screenshots/task-drawer.png` *(placeholder)* |
+
+| Safe import | Sync changes |
+| --- | --- |
+| `docs/screenshots/import.png` *(placeholder)* | `docs/screenshots/sync-changes.png` *(placeholder)* |
+
+## What it demonstrates
+
+- Explainable start-window recommendations with priority and confidence scores.
+- A polished student dashboard, coursework filters, task drawer, feedback loop, and private ICS calendar export.
+- Provider-based ingestion with a staged mock Canvas provider, transactional upserts, task-change events, and sync-run history.
+- Safe manual JSON and ICS imports—no scraping, passwords, or academic access tokens.
+- Preview-first reminders, deduplication, user timing preferences, and optional Resend delivery behind environment variables.
+- Recruiter demo mode: staged sync story and one-click reset to a clean baseline.
+
+## Recommendation engine
+
+DueCue starts with a deterministic lead time by task type: short for readings/discussions, longer for projects and exams. It adjusts that window using due date, task type, estimated effort, points, task difficulty, course difficulty, reminder style, source changes, and prior feedback.
+
+The result is persisted with a recommended start time, `0–100` cue score, confidence score, explanation, and factor list. Feedback such as **Too early** or **Too late** creates bounded learning preferences that influence future work of the same type/course. The task drawer makes these inputs visible rather than treating the result as a black box.
+
+## Safe data boundary
+
+Current supported sources are the simulated demo, manual JSON, and user-authorized ICS content. DueCue does **not** scrape Canvas/Carmen, automate school logins, store passwords, or collect school access tokens. An official Canvas OAuth connector is intentionally a future, approval-dependent integration.
+
+Reminder delivery is deliberately separate from login identity. Users can maintain a primary reminder email and opt-in additional self, parent/guardian, or other recipients with per-reminder controls. Added recipients stay preview-only until independently verified; demo workspaces use an explicit mock-verification state. School-email verification is a future option for campus pilots, not a current requirement.
+
+Start Window Open emails are the core reminder: they summarize the course, task, deadline, start window, cue score, and effort in a few lines. Their **Too early**, **Just right**, and **Too late** links carry opaque, one-time, expiring tokens scoped to the student, task, recommendation, notification, recipient, and selected rating. A click records feedback only for that student’s learning preferences and opens a DueCue confirmation page; expired, mismatched, or duplicate clicks do nothing.
 
 ## Local setup
 
-1. Ensure PostgreSQL is running and create a `duecue` database.
-2. Copy [backend/.env.example](backend/.env.example) to `backend/.env` (or create a root `.env`) and set `DATABASE_URL`.
-3. Install packages and apply the schema. For a local macOS/Homebrew Postgres setup, include your database username in `DATABASE_URL` (for example, `postgresql://your-user@localhost:5432/duecue?schema=public`):
+Prerequisites: Node.js 20+, npm, and PostgreSQL.
 
 ```bash
 npm install
+cp backend/.env.example backend/.env
+# Set DATABASE_URL in backend/.env
 npm run db:migrate
 npm run db:seed
 npm run dev
 ```
 
-The web app runs at `http://localhost:5173`; the API runs at `http://localhost:4000`. `GET /api/health` is public. All other current routes use the local demo user automatically.
-
-## Demo sync story
-
-Run stage 1 after seeding (already complete), then exercise source changes through the API:
+The app is normally served at `http://localhost:5173` (Vite may choose `5174` if that port is busy). The API is `http://localhost:4000/api`; health is `GET /api/health`.
 
 ```bash
-curl -X POST http://localhost:4000/api/sync/run -H 'Content-Type: application/json' -d '{"stage":2}'
-curl -X POST http://localhost:4000/api/sync/run -H 'Content-Type: application/json' -d '{"stage":3}'
-curl -X POST http://localhost:4000/api/sync/run -H 'Content-Type: application/json' -d '{"stage":4}'
-curl http://localhost:4000/api/demo/state
-curl http://localhost:4000/api/sync/runs
+npm run build
+npm test
 ```
 
-Stage 2 adds CSE Project 2; stage 3 moves MATH Quiz 2 earlier; stage 4 raises the English essay’s points from 75 to 100. Each difference becomes a `TaskEvent` and is reflected in `SyncRun` counts.
+## Demo in two minutes
 
-## Recommendation and feedback loop
+See [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md). Start on Home, open **See why**, submit feedback, run the staged sync, then show safe import/calendar options. Use **Reset recruiter demo** in the sidebar before a new walkthrough.
 
-DueCue starts with explainable lead-time rules: readings/discussions get short windows, assignments/labs get two days, quizzes three, projects five, and exams seven. It then adjusts safely for reminder style, points, difficulty, estimated work, task urgency, and learning preferences. Feedback is stored by task type first; each signal changes lead time in bounded increments and raises confidence with additional samples.
+## Architecture
 
-## Demo mode
+```txt
+React / Vite UI
+       │ REST
+Express API ── Prisma ── PostgreSQL
+       │
+Provider registry → MockCanvasProvider / manual JSON / ICS
+       │
+Sync engine → task events → recommendations → notification previews / ICS
+```
 
-The dashboard is intentionally labeled as a **Buckeye demo workspace** with OSU-style course data. It uses simulated CarmenCanvas-style data and is independent—not an official Ohio State or CarmenCanvas app. It demonstrates automatic ingestion without claiming an official LMS integration or accepting school credentials. Use [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the recruiter/interview walkthrough.
+Detailed design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Import your own coursework safely
+## Deployment
 
-DueCue supports two user-authorized import paths today:
+The intended deployment shape is Vercel (frontend), Render (API), and Neon (Postgres). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for environment variables, CORS, Prisma migrations, demo database setup, and the remaining production-auth requirement.
 
-- **Manual JSON:** Open **Import** in the app and paste an array of tasks. Each entry requires `courseCode`, `title`, and an ISO `dueAt`; optional fields include `courseName`, `type`, `pointsPossible`, `estimatedMinutes`, `difficulty`, `description`, and `sourceUrl`.
-- **iCal/ICS:** Paste exported `.ics` content from a calendar you are authorized to access. DueCue imports events with a title and start date and uses title keywords for initial task classification.
+## Limitations and roadmap
 
-Neither path stores school passwords, scrapes Canvas/Carmen, or automates school login. A future Canvas integration must use an approved OAuth or iCal path.
+- The current primary source is simulated data; real Canvas OAuth is not implemented.
+- Production Clerk token verification must be connected before public multi-user deployment.
+- Resend exists behind configuration, but preview mode is the default.
+- A production release should add error monitoring and a separate demo database/tenant.
 
-## Email and notification preferences
+Near-term roadmap: production auth, approved OAuth/iCal integrations, import-review history, production observability, and a small student pilot. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
-`EMAIL_MODE=preview` is the default and never sends email. To enable Resend in a deployed environment, set `EMAIL_MODE=resend`, `RESEND_API_KEY`, and `EMAIL_FROM`, then let a signed-in user opt into email notifications through their settings. Notification generation deduplicates by task, notification type, and recommendation version.
+## Resume bullets
 
-## Deployment guide
-
-Use Vercel for `frontend`, Render for `backend`, and Neon Postgres for the database.
-
-1. Create a Neon database and set Render `DATABASE_URL` to its pooled production connection string.
-2. On Render, run `npm run db:deploy --workspace=@duecue/backend` as the release command and `npm run start --workspace=@duecue/backend` as the start command.
-3. Set `NODE_ENV=production`, `FRONTEND_URL` to the Vercel URL, and `AUTH_MODE=clerk`. Production intentionally rejects `AUTH_MODE=dev`. The current middleware deliberately exposes only a local demo-user fallback; connect Clerk's Express token verification here before accepting public traffic.
-4. On Vercel, configure `VITE_API_BASE_URL` with the Render API URL.
-5. Seed a dedicated demo database and keep the **Demo workspace** note visible for recruiter walkthroughs. It requires no school account or credentials. In the app, **Reset recruiter demo** returns the workspace to stage 1 and clears demo feedback, learning signals, notification previews, and change history.
-
-Before public deployment, replace the local dev-auth middleware with Clerk verification and configure allowed production origins. Keep a separate demo database/tenant for portfolio walkthroughs; never expose a shared demo user's data in a production user environment.
-
-### Production checklist
-
-- Render: use a health check at `/api/health`, set `DATABASE_URL`, `FRONTEND_URL`, `AUTH_MODE=clerk`, and optional Resend variables; run Prisma deploy migrations before starting the API.
-- Vercel: set `VITE_API_BASE_URL` to the HTTPS Render URL, then add that exact Vercel URL as `FRONTEND_URL` for CORS.
-- Neon: use its pooled runtime connection string and retain a direct migration connection if the Neon setup requires one.
-- Auth: verify Clerk bearer tokens server-side and map the stable Clerk subject to `User.authProviderId`; preserve `AUTH_MODE=dev` only for local/recruiter environments.
-- Observability: send unhandled API errors to an error monitor such as Sentry before opening the app to public users. Do not include task content, calendar feed tokens, or credentials in error payloads.
+See [docs/RESUME_BULLETS.md](docs/RESUME_BULLETS.md).
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Start frontend and backend together |
-| `npm run dev:frontend` | Start Vite only |
-| `npm run dev:backend` | Start Express only |
-| `npm run build` | Type-check/build all workspaces |
-| `npm run test` | Run backend unit tests |
-| `npm run db:migrate` | Create/apply development migrations |
-| `npm run db:seed` | Reset and seed only the named local demo user |
-
-The Calendar page includes reminder preferences for timing style, hour, weekends, digest, and email opt-in. The default remains preview-only: no email is sent until `EMAIL_MODE=resend` and the Resend variables are configured.
-
-## Architecture
-
-The provider layer exposes a small `CourseProvider` interface. `MockCanvasProvider` is the first implementation; future approved Canvas iCal/OAuth adapters can return the same provider DTOs. The sync engine owns the mapping to relational records and change-event creation, keeping providers free from database concerns. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Privacy and integration boundary
-
-DueCue does not scrape Canvas/Carmen, automate login, or store school usernames/passwords. The current provider is explicitly simulated. A production integration should use an approved OAuth or user-authorized calendar feed path and production authentication instead of dev auth.
-
-## Roadmap
-
-Next: deterministic recommendation calculations, feedback-driven learning, notification previews, calendar ICS export, and the dashboard UI. See [docs/ROADMAP.md](docs/ROADMAP.md).
-
-## Resume-ready direction
-
-- Built DueCue, an adaptive academic deadline assistant that syncs course tasks and detects deadline changes through a provider-based Node.js, Express, Prisma, and PostgreSQL backend.
-- Designed a transactional ingestion pipeline that upserts LMS-shaped course data by external identity and persists granular task-event and sync-run audit trails for future integrations.
+| `npm run dev` | Start frontend and API |
+| `npm run build` | Build/type-check both workspaces |
+| `npm test` | Run backend tests |
+| `npm run db:migrate` | Apply local Prisma migrations |
+| `npm run db:seed` | Reset and seed the local demo user |

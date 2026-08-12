@@ -87,6 +87,11 @@ enum NotificationStatus {
   skipped
   preview
 }
+enum RecipientRelationship {
+  self
+  parent_guardian
+  other
+}
 enum FeedbackType {
   too_early
   about_right
@@ -119,9 +124,11 @@ model User {
   syncRuns       SyncRun[]
   recommendations Recommendation[]
   notifications  Notification[]
+  reminderRecipients ReminderRecipient[]
   feedback       Feedback[]
   learningPreferences LearningPreference[]
   calendarTokens CalendarToken[]
+  emailFeedbackTokens EmailFeedbackToken[]
 }
 
 model UserSettings {
@@ -187,6 +194,7 @@ model AcademicTask {
   recommendations  Recommendation[]
   notifications    Notification[]
   feedback         Feedback[]
+  emailFeedbackTokens EmailFeedbackToken[]
   @@unique([userId, providerId, externalId])
   @@index([userId, dueAt])
   @@index([courseId, dueAt])
@@ -258,6 +266,7 @@ model Recommendation {
   task                    AcademicTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
   notifications           Notification[]
   feedback                Feedback[]
+  emailFeedbackTokens     EmailFeedbackToken[]
   @@index([userId, taskId])
 }
 
@@ -266,6 +275,7 @@ model Notification {
   userId           String
   taskId           String?
   recommendationId String?
+  recipientId      String?
   type             NotificationType
   channel          NotificationChannel
   status           NotificationStatus @default(preview)
@@ -280,8 +290,33 @@ model Notification {
   user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   task             AcademicTask?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
   recommendation   Recommendation?    @relation(fields: [recommendationId], references: [id], onDelete: SetNull)
+  recipient        ReminderRecipient? @relation(fields: [recipientId], references: [id], onDelete: SetNull)
   feedback         Feedback[]
+  emailFeedbackTokens EmailFeedbackToken[]
   @@index([userId, status])
+  @@index([recipientId, status])
+}
+
+model ReminderRecipient {
+  id                    String                @id @default(cuid())
+  userId                String
+  email                 String
+  label                 String
+  relationship          RecipientRelationship @default(self)
+  verifiedAt            DateTime?
+  demoVerified          Boolean               @default(false)
+  enabled               Boolean               @default(true)
+  startWindowEnabled    Boolean               @default(true)
+  dueSoonEnabled        Boolean               @default(true)
+  deadlineChangedEnabled Boolean               @default(true)
+  weeklyDigestEnabled   Boolean               @default(true)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifications         Notification[]
+  emailFeedbackTokens   EmailFeedbackToken[]
+  @@unique([userId, email])
+  @@index([userId, enabled])
 }
 
 model Feedback {
@@ -298,6 +333,26 @@ model Feedback {
   recommendation   Recommendation? @relation(fields: [recommendationId], references: [id], onDelete: SetNull)
   notification     Notification? @relation(fields: [notificationId], references: [id], onDelete: SetNull)
   @@index([userId, createdAt])
+}
+
+model EmailFeedbackToken {
+  id               String   @id @default(cuid())
+  tokenHash        String   @unique
+  userId           String
+  taskId           String
+  recommendationId String
+  notificationId   String
+  recipientId      String?
+  feedbackType     FeedbackType
+  expiresAt        DateTime
+  consumedAt       DateTime?
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task             AcademicTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  recommendation   Recommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+  notification     Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  recipient        ReminderRecipient? @relation(fields: [recipientId], references: [id], onDelete: SetNull)
+  @@index([userId, expiresAt])
 }
 
 model LearningPreference {
