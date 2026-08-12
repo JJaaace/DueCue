@@ -1,0 +1,328 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ReminderStyle {
+  conservative
+  balanced
+  aggressive
+}
+enum NotificationChannel {
+  email
+  in_app
+  calendar
+}
+enum CourseDifficulty {
+  easy
+  normal
+  hard
+}
+enum TaskType {
+  assignment
+  quiz
+  exam
+  project
+  reading
+  discussion
+  lab
+  other
+}
+enum TaskDifficulty {
+  low
+  medium
+  high
+}
+enum TaskStatus {
+  upcoming
+  start_now
+  in_progress
+  done
+  overdue
+}
+enum TaskEventType {
+  created
+  updated
+  due_date_changed
+  title_changed
+  points_changed
+  removed
+  completed
+  recommendation_changed
+}
+enum ProviderKind {
+  mock_canvas
+  manual_import
+  ical_feed
+  canvas_ical
+  canvas_oauth_future
+}
+enum ConnectionStatus {
+  connected
+  disconnected
+  demo
+  error
+}
+enum SyncStatus {
+  started
+  success
+  failed
+}
+enum NotificationType {
+  start_recommendation
+  due_soon
+  deadline_changed
+  overdue
+  digest
+  feedback_request
+}
+enum NotificationStatus {
+  scheduled
+  sent
+  failed
+  skipped
+  preview
+}
+enum FeedbackType {
+  too_early
+  about_right
+  too_late
+  need_more_time
+  need_less_time
+  not_relevant
+}
+enum LearningScope {
+  global
+  course
+  task_type
+  course_task_type
+}
+
+model User {
+  id             String   @id @default(cuid())
+  authProviderId String?  @unique
+  email          String   @unique
+  name           String?
+  schoolName     String?
+  timezone       String   @default("America/New_York")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  settings       UserSettings?
+  courses        Course[]
+  tasks          AcademicTask[]
+  taskEvents     TaskEvent[]
+  connections    ProviderConnection[]
+  syncRuns       SyncRun[]
+  recommendations Recommendation[]
+  notifications  Notification[]
+  feedback       Feedback[]
+  learningPreferences LearningPreference[]
+  calendarTokens CalendarToken[]
+}
+
+model UserSettings {
+  id                       String              @id @default(cuid())
+  userId                   String              @unique
+  defaultReminderHour      Int                 @default(9)
+  reminderStyle            ReminderStyle       @default(balanced)
+  defaultChannel           NotificationChannel @default(in_app)
+  weekendRemindersEnabled  Boolean             @default(true)
+  digestEnabled            Boolean             @default(true)
+  emailEnabled             Boolean             @default(false)
+  onboardingCompleted      Boolean             @default(false)
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  user                     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Course {
+  id             String           @id @default(cuid())
+  userId         String
+  providerId     String
+  externalId     String
+  code           String
+  name           String
+  instructorName String?
+  color          String           @default("#5EEAD4")
+  term           String?
+  difficulty     CourseDifficulty @default(normal)
+  active         Boolean          @default(true)
+  lastSyncedAt   DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks          AcademicTask[]
+  learningPreferences LearningPreference[]
+  @@unique([userId, providerId, externalId])
+  @@index([userId, active])
+}
+
+model AcademicTask {
+  id               String         @id @default(cuid())
+  userId           String
+  courseId         String
+  providerId       String
+  externalId       String
+  title            String
+  description      String?
+  type             TaskType       @default(other)
+  dueAt            DateTime
+  availableAt      DateTime?
+  pointsPossible   Float?
+  estimatedMinutes Int?
+  difficulty       TaskDifficulty @default(medium)
+  status           TaskStatus     @default(upcoming)
+  sourceUrl        String?
+  rawSource        Json?
+  removedAt        DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course           Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  events           TaskEvent[]
+  recommendations  Recommendation[]
+  notifications    Notification[]
+  feedback         Feedback[]
+  @@unique([userId, providerId, externalId])
+  @@index([userId, dueAt])
+  @@index([courseId, dueAt])
+}
+
+model TaskEvent {
+  id            String        @id @default(cuid())
+  userId        String
+  taskId        String
+  eventType     TaskEventType
+  previousValue Json?
+  newValue      Json?
+  createdAt     DateTime      @default(now())
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task          AcademicTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
+  @@index([taskId, createdAt])
+}
+
+model ProviderConnection {
+  id           String           @id @default(cuid())
+  userId       String
+  provider     ProviderKind
+  displayName  String
+  status       ConnectionStatus @default(demo)
+  config       Json?
+  lastSyncAt   DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  syncRuns     SyncRun[]
+  @@unique([userId, provider])
+}
+
+model SyncRun {
+  id                   String             @id @default(cuid())
+  userId               String
+  providerConnectionId String
+  status               SyncStatus         @default(started)
+  startedAt            DateTime           @default(now())
+  finishedAt           DateTime?
+  coursesFound         Int                @default(0)
+  tasksFound           Int                @default(0)
+  tasksCreated         Int                @default(0)
+  tasksUpdated         Int                @default(0)
+  tasksRemoved         Int                @default(0)
+  errorMessage         String?
+  metadata             Json?
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  providerConnection   ProviderConnection @relation(fields: [providerConnectionId], references: [id], onDelete: Cascade)
+  @@index([userId, startedAt])
+}
+
+model Recommendation {
+  id                      String   @id @default(cuid())
+  userId                  String
+  taskId                  String
+  recommendedStartAt      DateTime
+  priorityScore           Float
+  confidenceScore         Float
+  leadTimeDays            Float
+  estimatedEffortMinutes  Int?
+  explanation             String
+  factors                 Json?
+  version                 Int      @default(1)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task                    AcademicTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  notifications           Notification[]
+  feedback                Feedback[]
+  @@index([userId, taskId])
+}
+
+model Notification {
+  id               String             @id @default(cuid())
+  userId           String
+  taskId           String?
+  recommendationId String?
+  type             NotificationType
+  channel          NotificationChannel
+  status           NotificationStatus @default(preview)
+  scheduledFor     DateTime?
+  sentAt           DateTime?
+  subject          String
+  body             String
+  providerMessageId String?
+  failureReason    String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task             AcademicTask?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  recommendation   Recommendation?    @relation(fields: [recommendationId], references: [id], onDelete: SetNull)
+  feedback         Feedback[]
+  @@index([userId, status])
+}
+
+model Feedback {
+  id               String       @id @default(cuid())
+  userId           String
+  taskId           String?
+  recommendationId String?
+  notificationId   String?
+  feedbackType     FeedbackType
+  comment          String?
+  createdAt        DateTime     @default(now())
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task             AcademicTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  recommendation   Recommendation? @relation(fields: [recommendationId], references: [id], onDelete: SetNull)
+  notification     Notification? @relation(fields: [notificationId], references: [id], onDelete: SetNull)
+  @@index([userId, createdAt])
+}
+
+model LearningPreference {
+  id                     String        @id @default(cuid())
+  userId                 String
+  scopeType              LearningScope
+  courseId               String?
+  taskType               TaskType?
+  leadTimeAdjustmentDays Float         @default(0)
+  confidence             Float         @default(0)
+  sampleSize             Int           @default(0)
+  lastUpdatedAt          DateTime      @default(now())
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  user                   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course                 Course?       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  @@index([userId, scopeType])
+}
+
+model CalendarToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

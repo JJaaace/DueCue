@@ -1,0 +1,25 @@
+{
+  "name": "duecue",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n frontend,backend -c cyan,magenta \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:backend": "npm run dev --workspace=backend",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspace=backend",
+    "db:migrate": "npm run db:migrate --workspace=backend",
+    "db:seed": "npm run db:seed --workspace=backend"
+  },
+  "devDependencies": {
+    "@types/node-cron": "^3.0.11",
+    "concurrently": "^9.1.2"
+  },
+  "dependencies": {
+    "node-cron": "^4.6.0"
+  }
+}
