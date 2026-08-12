@@ -8,6 +8,7 @@ async function sendResendEmail(message: { to: string; subject: string; body: str
   if (!response.ok) throw new Error(`Resend delivery failed: ${await response.text()}`);
   return (await response.json()) as { id: string };
 }
+const formatStartWindow = (date: Date) => new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hourCycle: "h12" }).format(date);
 
 export async function generateNotificationPreviews(userId: string) {
   const [recommendations, user, recipients] = await Promise.all([prisma.recommendation.findMany({ where: { userId }, include: { task: { include: { course: true } } } }), prisma.user.findUnique({ where: { id: userId }, include: { settings: true } }), prisma.reminderRecipient.findMany({ where: { userId, enabled: true } })]);
@@ -23,10 +24,10 @@ export async function generateNotificationPreviews(userId: string) {
       const existing = await prisma.notification.findFirst({ where: { userId, recipientId: recipient.id, taskId: task.id, type, recommendationId: recommendation.id, status: { in: ["preview", "scheduled", "sent"] } } });
       if (existing) continue;
       const canEmail = env.EMAIL_MODE === "resend" && Boolean(user?.settings?.emailEnabled) && Boolean(recipient.verifiedAt);
-      const base = emailTemplate({ type: type === "start_recommendation" ? "start_recommendation" : "due_soon", course: task.course.code, title: task.title, due, explanation: recommendation.explanation, startWindow: recommendation.recommendedStartAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }), score: Math.round(recommendation.priorityScore), effort: task.estimatedMinutes });
+      const base = emailTemplate({ type: type === "start_recommendation" ? "start_recommendation" : "due_soon", course: task.course.code, title: task.title, due, explanation: recommendation.explanation, startWindow: formatStartWindow(recommendation.recommendedStartAt), score: Math.round(recommendation.priorityScore), effort: task.estimatedMinutes });
       const notification = await prisma.notification.create({ data: { userId, recipientId: recipient.id, taskId: task.id, recommendationId: recommendation.id, type, channel: canEmail ? "email" : "in_app", status: canEmail ? "scheduled" : "preview", scheduledFor: recommendation.recommendedStartAt, subject: base.subject, body: base.body } });
       const feedbackLinks = Object.fromEntries(await Promise.all((["too_early", "about_right", "too_late"] as const).map(async (rating) => { const token = await createEmailFeedbackToken({ userId, taskId: task.id, recommendationId: recommendation.id, notificationId: notification.id, recipientId: recipient.id, feedbackType: rating }); return [rating, `${env.PUBLIC_API_URL}/api/feedback/email?token=${encodeURIComponent(token)}&rating=${rating}`]; }))) as Record<"too_early" | "about_right" | "too_late", string>;
-      const template = emailTemplate({ type: type === "start_recommendation" ? "start_recommendation" : "due_soon", course: task.course.code, title: task.title, due, explanation: recommendation.explanation, startWindow: recommendation.recommendedStartAt.toLocaleString("en-US", { month: "short", day: "numeric", minute: "2-digit" }), score: Math.round(recommendation.priorityScore), effort: task.estimatedMinutes, feedbackLinks });
+      const template = emailTemplate({ type: type === "start_recommendation" ? "start_recommendation" : "due_soon", course: task.course.code, title: task.title, due, explanation: recommendation.explanation, startWindow: formatStartWindow(recommendation.recommendedStartAt), score: Math.round(recommendation.priorityScore), effort: task.estimatedMinutes, feedbackLinks });
       await prisma.notification.update({ where: { id: notification.id }, data: { subject: template.subject, body: template.body } });
       if (canEmail) {
         try { const sent = await sendResendEmail({ to: recipient.email, subject: template.subject, body: template.body }); await prisma.notification.update({ where: { id: notification.id }, data: { status: "sent", sentAt: new Date(), providerMessageId: sent.id } }); }

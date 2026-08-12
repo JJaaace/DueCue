@@ -8,7 +8,7 @@ DueCue turns coursework into clear start windows, explains each recommendation, 
 
 ## Screenshots
 
-Add screenshots here before sharing publicly:
+Add screenshots here before sharing publicly. See [the capture checklist](docs/screenshots/README.md) for exact views, filenames, and privacy guidance.
 
 | Home and Next Cue | Task detail and reasoning |
 | --- | --- |

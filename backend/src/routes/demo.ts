@@ -25,9 +25,12 @@ demoRouter.post("/demo/reset", async (req, res, next) => {
       prisma.notification.deleteMany({ where: { userId: req.userId } }),
       prisma.taskEvent.deleteMany({ where: { userId: req.userId } }),
       prisma.recommendation.deleteMany({ where: { userId: req.userId } }),
+      prisma.academicTask.deleteMany({ where: { userId: req.userId, providerId: "mock_canvas" } }),
+      prisma.syncRun.deleteMany({ where: { userId: req.userId, providerConnectionId: connection.id } }),
     ]);
     await setMockStage(req.userId!, connection.id, 1);
     const run = await runSync(req.userId!, connection.id);
+    await prisma.taskEvent.deleteMany({ where: { userId: req.userId } });
     res.json({ message: "Demo workspace reset to stage 1.", run });
   } catch (error) { next(error); }
 });
