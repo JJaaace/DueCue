@@ -1,6 +1,6 @@
 # DueCue roadmap
 
-## V1 completed
+## V1: demo workspace completed
 
 - Monorepo scaffold and local dev authentication fallback
 - Prisma/PostgreSQL data model and demo seed
@@ -9,19 +9,17 @@
 - Deterministic recommendation engine with start-now and confidence scores
 - Feedback-driven learning preferences and notification preview pipeline
 - Private ICS calendar export and responsive student dashboard
-- User-authorized manual JSON/iCal import, task filters, onboarding, sync diff, and optional Resend delivery
+- User-authorized manual JSON import, task filters, onboarding, sync diff, and optional Resend delivery
 
-## Next
+## V2: iCal feed sync + manual enrichment
 
-- Deterministic recommendation engine and start-now status
-- Feedback learning preferences and insight endpoint
-- Preview-only notification pipeline
-- Private, revocable ICS calendar feed
-- Dashboard, courses, tasks, timeline, and settings UI
+- User-authorized ongoing iCal feed URL sync
+- Imported-task enrichment for type, effort, difficulty, points, and status
+- Transparent calendar-feed metadata limitations
 
-## Future integrations
+## V3: approved Canvas OAuth
 
-- User-authorized Canvas iCal import
-- Approved Canvas OAuth integration only after security/privacy review
+- Official Canvas OAuth only after institutional approval and security/privacy review
+- Full assignment metadata where approved: submissions, grades, rubrics, and points
 - Real email delivery and Google Calendar OAuth
 - Mobile-friendly notifications and a small student pilot
