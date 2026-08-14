@@ -7,6 +7,11 @@ export type RecommendationInput = {
   estimatedMinutes: number | null;
   taskDifficulty: "low" | "medium" | "high";
   courseDifficulty: "easy" | "normal" | "hard";
+  currentGradePercent?: number | null;
+  targetGradePercent?: number | null;
+  courseImportance?: "normal" | "important" | "critical";
+  gradeWeight?: number | null;
+  affectsGrade?: boolean;
   reminderStyle: ReminderStyle;
   adjustmentDays?: number;
   sampleSize?: number;
@@ -17,6 +22,20 @@ export type RecommendationInput = {
 const BASE_LEAD_DAYS: Record<TaskType, number> = { reading: 1, discussion: 1, assignment: 2, lab: 2, quiz: 3, project: 5, exam: 7, other: 2 };
 const TYPE_WEIGHT: Record<TaskType, number> = { reading: 5, discussion: 8, assignment: 18, lab: 20, quiz: 28, project: 42, exam: 48, other: 15 };
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+export function calculateGradePrioritySignal(input: Pick<RecommendationInput, "currentGradePercent" | "targetGradePercent" | "courseImportance" | "pointsPossible" | "gradeWeight" | "affectsGrade" | "type">) {
+  if (input.currentGradePercent == null || input.targetGradePercent == null || input.affectsGrade === false) return { adjustment: 0, leadTimeDays: 0, explanation: null as string | null };
+  const gap = input.targetGradePercent - input.currentGradePercent;
+  const importance = input.courseImportance ?? "normal";
+  const importanceBoost = importance === "critical" ? 8 : importance === "important" ? 4 : 0;
+  const highValue = (input.pointsPossible ?? 0) >= 75 || (input.gradeWeight ?? 0) >= 10 || ["exam", "project"].includes(input.type);
+  if (gap > 0) {
+    const gapBoost = gap > 10 ? 14 : gap > 5 ? 9 : 4;
+    return { adjustment: Math.min(22, gapBoost + importanceBoost + (highValue ? 2 : 0)), leadTimeDays: gap > 5 ? 0.5 : 0, explanation: `${gap.toFixed(0)}% below your course target${importance !== "normal" ? ` (${importance} course)` : ""}` };
+  }
+  if (gap <= -5 && !highValue) return { adjustment: Math.max(-6, -3 - (importance === "normal" ? 0 : 1)), leadTimeDays: 0, explanation: "course is safely above your target; low-value work gets a small reduction" };
+  return { adjustment: importanceBoost, leadTimeDays: 0, explanation: importanceBoost ? `${importance} course importance` : null };
+}
 
 export function calculateRecommendation(input: RecommendationInput) {
   const now = input.now ?? new Date();
@@ -29,6 +48,9 @@ export function calculateRecommendation(input: RecommendationInput) {
   if (input.courseDifficulty === "hard") { leadTimeDays += 0.75; factors.push("hard course: +0.75 day"); }
   if (input.taskDifficulty === "low" && input.courseDifficulty === "easy") { leadTimeDays -= 0.5; factors.push("low-complexity task: -0.5 day"); }
   if (input.adjustmentDays) { leadTimeDays += input.adjustmentDays; factors.push(`feedback adjustment: ${input.adjustmentDays > 0 ? "+" : ""}${input.adjustmentDays} days`); }
+  const gradeSignal = calculateGradePrioritySignal(input);
+  if (gradeSignal.leadTimeDays) { leadTimeDays += gradeSignal.leadTimeDays; factors.push(`grade goal signal: +${gradeSignal.leadTimeDays} day`); }
+  if (gradeSignal.explanation) factors.push(`grade goal signal: ${gradeSignal.explanation}`);
   leadTimeDays = Math.round(clamp(leadTimeDays, 0.5, 14) * 4) / 4;
 
   const recommendedStartAt = new Date(input.dueAt.getTime() - leadTimeDays * 86_400_000);
@@ -38,15 +60,15 @@ export function calculateRecommendation(input: RecommendationInput) {
   const difficultyWeight = input.taskDifficulty === "high" ? 15 : input.taskDifficulty === "medium" ? 8 : 2;
   const changedWeight = input.dueDateChanged ? 12 : 0;
   const effortWeight = clamp((input.estimatedMinutes ?? 60) / 30, 0, 12);
-  const priorityScore = Math.round(clamp(urgency * 0.55 + (pointsWeight + TYPE_WEIGHT[input.type] + difficultyWeight + changedWeight + effortWeight) * 0.45, 0, 100));
+  const priorityScore = Math.round(clamp(urgency * 0.55 + (pointsWeight + TYPE_WEIGHT[input.type] + difficultyWeight + changedWeight + effortWeight) * 0.45 + gradeSignal.adjustment, 0, 100));
   const sampleSize = input.sampleSize ?? 0;
   const confidenceScore = Math.round(Math.min(0.95, 0.35 + sampleSize * 0.08) * 100) / 100;
   const insideWindow = recommendedStartAt <= now;
-  const explanation = input.dueDateChanged && insideWindow
+  const baseExplanation = input.dueDateChanged && insideWindow
     ? `Start today: this deadline changed and is now inside your ${leadTimeDays}-day start window.`
     : insideWindow
       ? `Start today: this ${input.type} is already inside your recommended ${leadTimeDays}-day start window.`
       : `Start ${leadTimeDays} days before the deadline because this is a${input.pointsPossible ? ` ${input.pointsPossible}-point` : ""} ${input.type}${input.taskDifficulty === "high" ? " with high difficulty" : ""}.${sampleSize ? " Your feedback is shaping this window." : " DueCue is using your default timing while it learns."}`;
+  const explanation = gradeSignal.adjustment > 0 && gradeSignal.explanation ? `${baseExplanation} Prioritized higher because this course is ${gradeSignal.explanation}.` : baseExplanation;
   return { recommendedStartAt, leadTimeDays, priorityScore, confidenceScore, explanation, factors, shouldStartNow: insideWindow && input.dueAt > now, isOverdue: input.dueAt <= now };
 }
-

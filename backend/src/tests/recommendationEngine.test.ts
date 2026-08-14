@@ -32,4 +32,23 @@ describe("recommendation engine", () => {
     const changed = calculateRecommendation(input({ dueAt: new Date("2026-08-13T12:00:00.000Z"), dueDateChanged: true }));
     expect(changed.priorityScore).toBeGreaterThan(stable.priorityScore);
   });
+  it("adds a bounded priority boost when a course is below its grade target", () => {
+    const base = calculateRecommendation(input());
+    const behind = calculateRecommendation(input({ currentGradePercent: 70, targetGradePercent: 85, courseImportance: "important" as const }));
+    expect(behind.priorityScore).toBeGreaterThan(base.priorityScore);
+    expect(behind.priorityScore - base.priorityScore).toBeLessThanOrEqual(22);
+    expect(behind.explanation).toContain("Prioritized higher");
+  });
+  it("slightly lowers low-value work when a course is safely above target", () => {
+    const base = calculateRecommendation(input({ pointsPossible: 10, type: "reading" }));
+    const ahead = calculateRecommendation(input({ pointsPossible: 10, type: "reading", currentGradePercent: 95, targetGradePercent: 85 }));
+    expect(ahead.priorityScore).toBeLessThan(base.priorityScore);
+  });
+  it("keeps a high-value exam important even with a strong course grade", () => {
+    const exam = calculateRecommendation(input({ type: "exam", pointsPossible: 150, dueAt: new Date("2026-08-12T12:00:00.000Z"), currentGradePercent: 96, targetGradePercent: 90 }));
+    expect(exam.priorityScore).toBeGreaterThan(60);
+  });
+  it("works normally when grade data is absent", () => {
+    expect(calculateRecommendation(input()).factors.some((factor) => factor.includes("grade goal signal"))).toBe(false);
+  });
 });

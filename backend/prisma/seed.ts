@@ -1,5 +1,6 @@
 import { prisma } from "../src/lib/prisma.js";
 import { runSync } from "../src/services/sync/syncEngine.js";
+import { recalculateUserRecommendations } from "../src/services/recommendations/recommendationService.js";
 
 const DEMO_EMAIL = "demo@duecue.local";
 
@@ -17,8 +18,12 @@ async function main() {
     include: { connections: true },
   });
   const run = await runSync(user.id, user.connections[0]!.id);
+  await Promise.all([
+    prisma.course.updateMany({ where: { userId: user.id, code: "MATH 1151" }, data: { currentGradePercent: 70, targetGradePercent: 85, gradeGoalLabel: "raise_grade", courseImportance: "important", gradeDataSource: "manual" } }),
+    prisma.course.updateMany({ where: { userId: user.id, code: "ENGLISH 1110" }, data: { currentGradePercent: 95, targetGradePercent: 90, gradeGoalLabel: "maintain_a", courseImportance: "normal", gradeDataSource: "manual" } }),
+  ]);
+  await recalculateUserRecommendations(user.id);
   console.log(`Seeded ${DEMO_EMAIL}: ${run.coursesFound} courses and ${run.tasksFound} tasks (sync ${run.id}).`);
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());
-

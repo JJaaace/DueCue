@@ -17,7 +17,7 @@ export async function recalculateTaskRecommendation(userId: string, taskId: stri
     preferenceFor(userId, task.courseId, task.type),
     prisma.taskEvent.findFirst({ where: { taskId, eventType: "due_date_changed" }, orderBy: { createdAt: "desc" } }),
   ]);
-  const calculated = calculateRecommendation({ type: task.type, dueAt: task.dueAt, pointsPossible: task.pointsPossible, estimatedMinutes: task.estimatedMinutes, taskDifficulty: task.difficulty, courseDifficulty: task.course.difficulty, reminderStyle: settings?.reminderStyle ?? "balanced", adjustmentDays: preference?.leadTimeAdjustmentDays, sampleSize: preference?.sampleSize, dueDateChanged: Boolean(dueEvent) });
+  const calculated = calculateRecommendation({ type: task.type, dueAt: task.dueAt, pointsPossible: task.pointsPossible, gradeWeight: task.gradeWeight, affectsGrade: task.affectsGrade, estimatedMinutes: task.estimatedMinutes, taskDifficulty: task.difficulty, courseDifficulty: task.course.difficulty, currentGradePercent: task.course.currentGradePercent, targetGradePercent: task.course.targetGradePercent, courseImportance: task.course.courseImportance, reminderStyle: settings?.reminderStyle ?? "balanced", adjustmentDays: preference?.leadTimeAdjustmentDays, sampleSize: preference?.sampleSize, dueDateChanged: Boolean(dueEvent) });
   const { shouldStartNow, isOverdue, factors, ...recommendationData } = calculated;
   const status = isOverdue ? "overdue" : shouldStartNow ? "start_now" : "upcoming";
   const existing = await prisma.recommendation.findFirst({ where: { userId, taskId }, orderBy: { version: "desc" } });
