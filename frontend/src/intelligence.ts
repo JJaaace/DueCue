@@ -59,7 +59,7 @@ export function detectWorkloadRadar<T extends IntelligenceTask>(tasks: T[], chan
   const level = maxDue.length >= 4 || urgent.length >= 3 ? "Overloaded" : maxDue.length >= 3 || majorClose.length >= 2 ? "Heavy" : maxDue.length >= 2 || maxStart.length >= 2 || urgent.length > 0 ? "Watch" : "Calm";
   const top = buildTodayPlan(active, changedTitles, now)[0];
   const dueDate = maxDue[0] ? new Date(maxDue[0].dueAt).toLocaleDateString(undefined, { weekday: "long" }) : "later this week";
-  const message = level === "Calm" ? "This week looks manageable. DueCue is watching for changes." : majorClose.length >= 2 ? `You have a ${majorClose[0].type} and ${majorClose[1].type} due within 48 hours.` : maxDue.length >= 2 ? `${dueDate} is ${level.toLowerCase()}: ${maxDue.length} tasks are due that day.` : `${maxStart.length} start windows open on the same day.`;
+  const message = level === "Calm" ? "This week looks manageable. DueCue is watching for changes." : majorClose.length >= 2 ? `You have a ${majorClose[0].type} and ${majorClose[1].type} due within 48 hours.` : maxDue.length >= 2 ? `${dueDate} needs attention: ${maxDue.length} tasks are due that day.` : `${maxStart.length} start windows open on the same day.`;
   return { level, message, action: top ? `Start ${top.task.title} today to protect the rest of your week.` : "No high-priority work right now. DueCue will keep watching." };
 }
 
@@ -79,7 +79,7 @@ export function buildWeeklyGamePlan<T extends IntelligenceTask>(tasks: T[], chan
   const changed = changedTitles[0];
   if (changed) items.push({ kind: "note", title: "Recent change matters", detail: `${changed} changed in the latest sync, so DueCue refreshed its timing.` });
   const gradeTask = plan.find(({ task }) => task.course && task.course.currentGradePercent != null && task.course.targetGradePercent != null && task.course.currentGradePercent < task.course.targetGradePercent);
-  if (gradeTask) items.push({ kind: "task", title: `${gradeTask.task.course!.code} needs attention`, detail: `This course is below your target, so comparable work gets a bounded priority boost.`, task: gradeTask.task });
+  if (gradeTask) items.push({ kind: "task", title: `${gradeTask.task.course!.code} needs attention`, detail: `This course is below your target, so similar work gets a little more attention this week.`, task: gradeTask.task });
   if (learningLabel) items.push({ kind: "note", title: "Learning signal", detail: `${learningLabel} is shaping future cue timing.` });
   return items.slice(0, 6);
 }
