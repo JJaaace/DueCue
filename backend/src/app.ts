@@ -12,10 +12,12 @@ import { dataRouter } from "./routes/data.js";
 import { importRouter } from "./routes/imports.js";
 
 export const app = express();
-const localFrontendOrigins = new Set([env.FRONTEND_URL, "http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"]);
+const allowedOrigins = new Set(env.NODE_ENV === "production"
+  ? [env.FRONTEND_URL]
+  : [env.FRONTEND_URL, "http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"]);
 app.use(cors({ origin(origin, callback) {
-  // Browser-less tools have no Origin header; production still accepts only its configured frontend origin.
-  if (!origin || localFrontendOrigins.has(origin)) return callback(null, true);
+  // Browser-less calendar clients and health checks have no Origin header. Browser traffic stays allowlisted.
+  if (!origin || allowedOrigins.has(origin)) return callback(null, true);
   return callback(new Error(`CORS rejected origin: ${origin}`));
 } }));
 app.use(express.json());

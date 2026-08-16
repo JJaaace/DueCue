@@ -69,6 +69,60 @@ export function recommendForAvailableTime<T extends IntelligenceTask>(tasks: T[]
   return (fitting.length ? fitting : plan).slice(0, 3).map((entry) => ({ ...entry, fit: entry.task.estimatedMinutes && entry.task.estimatedMinutes <= minutes ? "Fits your time" : `Best use of ${minutes} minutes` }));
 }
 
+const DEFAULT_EFFORT_BY_TYPE: Record<string, number> = {
+  reading: 25,
+  discussion: 30,
+  quiz: 40,
+  assignment: 60,
+  lab: 75,
+  exam: 90,
+  test: 90,
+  project: 120,
+  other: 45,
+};
+
+export function buildAvailableTimePlan<T extends IntelligenceTask>(tasks: T[], availableMinutes: number, changedTitles: string[] = [], now = new Date()) {
+  const minutes = Math.max(10, Math.min(480, Math.round(availableMinutes)));
+  const ranked = buildTodayPlan(tasks, changedTitles, now).slice(0, 12).map((entry) => ({
+    ...entry,
+    effortMinutes: Math.max(10, entry.task.estimatedMinutes ?? DEFAULT_EFFORT_BY_TYPE[entry.task.type] ?? DEFAULT_EFFORT_BY_TYPE.other),
+    usesEstimatedEffort: entry.task.estimatedMinutes == null,
+  }));
+  const selected: Array<typeof ranked[number] & { plannedMinutes: number; completesTask: boolean }> = [];
+  const selectedIds = new Set<string>();
+  let remainingMinutes = minutes;
+
+  const urgentTopTask = ranked[0];
+  if (urgentTopTask && ["Overdue", "At risk"].includes(urgentTopTask.risk.label) && urgentTopTask.effortMinutes > remainingMinutes) {
+    selected.push({ ...urgentTopTask, plannedMinutes: remainingMinutes, completesTask: false });
+    selectedIds.add(urgentTopTask.task.id);
+    remainingMinutes = 0;
+  }
+
+  while (selected.length < 4) {
+    const next = ranked.find((entry) => !selectedIds.has(entry.task.id) && entry.effortMinutes <= remainingMinutes);
+    if (!next) break;
+    selected.push({ ...next, plannedMinutes: next.effortMinutes, completesTask: true });
+    selectedIds.add(next.task.id);
+    remainingMinutes -= next.effortMinutes;
+  }
+
+  if (remainingMinutes >= 10 && selected.length < 4) {
+    const next = ranked.find((entry) => !selectedIds.has(entry.task.id));
+    if (next) {
+      selected.push({ ...next, plannedMinutes: remainingMinutes, completesTask: false });
+      remainingMinutes = 0;
+    }
+  }
+
+  return {
+    availableMinutes: minutes,
+    plannedMinutes: minutes - remainingMinutes,
+    bufferMinutes: remainingMinutes,
+    items: selected,
+  };
+}
+
 export function buildWeeklyGamePlan<T extends IntelligenceTask>(tasks: T[], changedTitles: string[] = [], learningLabel?: string, now = new Date()) {
   const plan = buildTodayPlan(tasks, changedTitles, now); const radar = detectWorkloadRadar(tasks, changedTitles, now);
   const items: Array<{ kind: "task" | "note"; title: string; detail: string; task?: T }> = [];

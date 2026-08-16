@@ -23,7 +23,7 @@ Add screenshots here before sharing publicly. See [the capture checklist](docs/s
 - Explainable start-window recommendations with priority and confidence scores.
 - A deterministic **Today Plan** that ranks what to start first using urgency, open start windows, cue score, effort, task type, source changes, and deadline pileups.
 - A calm **Workload Radar** that detects clustered deadlines and start windows before they become a stressful surprise.
-- Task-risk labels and an **I have…** time helper that recommends practical coursework for 30 minutes, one hour, or two hours.
+- Task-risk labels and an **I have…** session planner with quick presets, exact custom durations, and one or more personalized coursework blocks that fit the time available.
 - A compact **Weekly Game Plan** with actionable week-ahead signals, meaningful change summaries, and deterministic batch suggestions for quick wins, shared-course work, and same-day deadlines.
 - Optional, private grade goals that give comparable coursework a bounded priority adjustment—without overriding urgent, high-value work.
 - A polished student dashboard, coursework filters, task drawer, feedback loop, and private ICS calendar export.
@@ -93,6 +93,8 @@ Sync engine → task events → recommendations → notification previews / ICS
 Detailed design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Deployment
+
+Production uses Clerk session tokens to isolate each signed-in student's DueCue workspace. Local development keeps the seeded demo workspace through `AUTH_MODE=dev`; public deployments must use `AUTH_MODE=clerk` with `CLERK_SECRET_KEY` (and `VITE_CLERK_PUBLISHABLE_KEY` on the frontend). See [Deployment](docs/DEPLOYMENT.md) for the complete Vercel, Render, Neon, CORS, Clerk, migration, and recruiter-demo setup.
 
 The intended deployment shape is Vercel (frontend), Render (API), and Neon (Postgres). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for environment variables, CORS, Prisma migrations, demo database setup, and the remaining production-auth requirement.
 

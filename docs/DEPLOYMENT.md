@@ -28,7 +28,10 @@ Set the variables below. The API validates configuration at startup; production 
 | `DATABASE_URL` | Yes | Neon connection string |
 | `FRONTEND_URL` | Yes | Exact deployed Vercel origin |
 | `PUBLIC_API_URL` | Yes | Public HTTPS API origin used in one-click email feedback links |
-| `AUTH_MODE` | Yes | `clerk` for production |
+| `AUTH_MODE` | Yes | `clerk` for production; never use the local demo auth mode publicly |
+| `CLERK_SECRET_KEY` | Yes* | Clerk backend secret key used to verify session tokens (`sk_…`) |
+| `CLERK_JWT_KEY` | Optional | Clerk PEM JWT verification key for networkless verification; use this or the secret key, preferably both |
+| `CLERK_AUTHORIZED_PARTIES` | Recommended | Comma-separated allowed frontend origins, e.g. `https://your-duecue.vercel.app` |
 | `PORT` | Render supplied | Defaults to 4000 locally |
 | `EMAIL_MODE` | No | `preview` is safe default; `resend` enables delivery |
 | `RESEND_API_KEY` | Only Resend | Required when `EMAIL_MODE=resend` |
@@ -41,6 +44,7 @@ Import the same repository and set the project root directory to `frontend`.
 | Variable | Value |
 | --- | --- |
 | `VITE_API_BASE_URL` | `https://your-render-service.onrender.com` |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (`pk_…`); safe for browser use |
 
 Deploy, then copy the Vercel HTTPS origin into Render's `FRONTEND_URL`. DueCue CORS accepts the configured frontend origin plus local development origins; do not use a wildcard production origin.
 
@@ -60,9 +64,11 @@ npm run db:seed --workspace=@duecue/backend
 
 The seed deletes and recreates only `demo@duecue.local` in that database. In the UI, **Reset recruiter demo** resets staged provider data and clears demo-derived feedback, previews, and history.
 
-## 5. Authentication blocker before public launch
+## 5. Clerk authentication and workspace isolation
 
-The data model supports a stable external identity through `User.authProviderId`, and production already requires `AUTH_MODE=clerk`. The remaining implementation task is to verify Clerk bearer/session tokens in the Express middleware, resolve/create a user by Clerk subject, and remove the local demo-user fallback from public production traffic. Do not deploy a public multi-user app before this is done.
+Before deployment, create a **separate DueCue Clerk application** and configure its allowed origins for the DueCue Vercel URL. Set `VITE_CLERK_PUBLISHABLE_KEY` only on Vercel, and set `CLERK_SECRET_KEY` (and optionally `CLERK_JWT_KEY`) only on Render. The frontend sends the signed-in Clerk session token as a bearer token; the API verifies it before every protected request.
+
+DueCue maps Clerk's stable user subject to `User.authProviderId`, creating a private workspace on first sign-in. The local `demo@duecue.local` fallback exists only under `AUTH_MODE=dev`; it cannot be selected or reached in production. Keep a recruiter demo in a **separate database**. If a controlled Clerk demo account should access its seeded data, set `RECRUITER_DEMO_CLERK_USER_ID` only for that dedicated demo seed run. Never set it on a shared user database.
 
 ## 6. Operational checklist
 
