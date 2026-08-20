@@ -5,7 +5,7 @@ export function AmbientNetworkBackground() {
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return;
     const context = canvas.getContext("2d"); if (!context) return;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)"); let reduced = motionPreference.matches;
     let frame = 0; let animationId = 0; let width = 0; let height = 0;
     const nodes = Array.from({ length: 18 }, (_, index) => ({ x: (index * 137) % 1000, y: (index * 223) % 720, dx: ((index % 3) - 1) * 0.055, dy: ((index % 4) - 1.5) * 0.045, pulse: index === 3 || index === 13 }));
     const draw = () => {
@@ -23,7 +23,8 @@ export function AmbientNetworkBackground() {
       nodes.forEach((node) => { const alpha = node.pulse ? 0.32 + Math.sin(frame / 55) * 0.13 : 0.29; context.fillStyle = node.pulse ? `rgba(214,37,64,${alpha})` : `rgba(220,215,217,${alpha})`; context.beginPath(); context.arc(node.x * scaleX, node.y * scaleY, node.pulse ? 3 : 2, 0, Math.PI * 2); context.fill(); });
       if (!reduced) { frame += 1; animationId = requestAnimationFrame(draw); }
     };
-    draw(); return () => { if (!reduced) cancelAnimationFrame(animationId); };
+    const onMotionChange = (event: MediaQueryListEvent) => { reduced = event.matches; cancelAnimationFrame(animationId); draw(); };
+    motionPreference.addEventListener("change", onMotionChange); draw(); return () => { cancelAnimationFrame(animationId); motionPreference.removeEventListener("change", onMotionChange); };
   }, []);
   return <canvas className="ambient-network" ref={canvasRef} aria-hidden="true" />;
 }

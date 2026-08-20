@@ -15,6 +15,7 @@ async function main() {
       authProviderId: demoClerkUserId ?? "dev_demo_jace", email: DEMO_EMAIL, name: "Jace (Demo)", schoolName: "Demo University", timezone: "America/New_York",
       settings: { create: { defaultReminderHour: 9, reminderStyle: "balanced", defaultChannel: "in_app", weekendRemindersEnabled: true, digestEnabled: true, onboardingCompleted: true } },
       connections: { create: { provider: "mock_canvas", displayName: "Simulated Canvas / Carmen", status: "demo", config: { mockStage: 1, demo: true } } },
+      reminderRecipients: { create: { email: DEMO_EMAIL, label: "Jace (Demo)", relationship: "self", demoVerified: true, enabled: true, startWindowEnabled: true, dueSoonEnabled: true, deadlineChangedEnabled: true, weeklyDigestEnabled: true } },
     },
     include: { connections: true },
   });

@@ -151,6 +151,7 @@ model UserSettings {
   id                       String              @id @default(cuid())
   userId                   String              @unique
   defaultReminderHour      Int                 @default(9)
+  defaultReminderMinute    Int                 @default(0)
   reminderStyle            ReminderStyle       @default(balanced)
   defaultChannel           NotificationChannel @default(in_app)
   weekendRemindersEnabled  Boolean             @default(true)
