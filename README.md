@@ -94,14 +94,14 @@ Detailed design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Deployment
 
-Production uses Clerk session tokens to isolate each signed-in student's DueCue workspace. Local development keeps the seeded demo workspace through `AUTH_MODE=dev`; public deployments must use `AUTH_MODE=clerk` with `CLERK_SECRET_KEY` (and `VITE_CLERK_PUBLISHABLE_KEY` on the frontend). See [Deployment](docs/DEPLOYMENT.md) for the complete Vercel, Render, Neon, CORS, Clerk, migration, and recruiter-demo setup.
+Production uses isolated anonymous demo sessions for signed-out recruiters and verified Clerk session tokens for private student workspaces. Local development keeps the seeded workspace through `AUTH_MODE=dev`; public deployments must use `AUTH_MODE=clerk` with `CLERK_SECRET_KEY` (and `VITE_CLERK_PUBLISHABLE_KEY` on the frontend). See [Deployment](docs/DEPLOYMENT.md) for the Vercel, Render, Neon, CORS, migration, cold-start, and visitor-flow checklist.
 
 The intended deployment shape is Vercel (frontend), Render (API), and Neon (Postgres). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for environment variables, CORS, Prisma migrations, demo database setup, and the remaining production-auth requirement.
 
 ## Limitations and roadmap
 
 - The current primary source is simulated data; real Canvas OAuth is not implemented.
-- Production Clerk token verification must be connected before public multi-user deployment.
+- Anonymous demo sessions are in memory; horizontally scaled production should move them to a shared expiring store.
 - Resend exists behind configuration, but preview mode is the default.
 - A production release should add error monitoring and a separate demo database/tenant.
 

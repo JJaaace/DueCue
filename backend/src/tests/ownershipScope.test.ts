@@ -11,12 +11,16 @@ describe("ownership boundaries", () => {
     const calendar = source("calendar.ts");
     const recommendations = source("recommendations.ts");
     const feedback = readFileSync(resolve(import.meta.dirname, "..", "services", "feedback", "feedbackService.ts"), "utf8");
+    const demo = source("demo.ts");
 
     expect(data).toContain("id: req.params.id, userId: req.userId");
-    expect(data).toContain("const where = { userId: req.userId!, removedAt: null");
+    expect(data).toContain("const where = { userId: req.userId!, providerId: { not: \"mock_canvas\" }, removedAt: null");
     expect(notifications).toContain("id: req.params.id, userId: req.userId");
     expect(calendar).toContain("where: { userId: req.userId!, active: true }");
     expect(recommendations).toContain("where: { userId: req.userId, taskId: req.params.taskId }");
-    expect(feedback).toContain("where: { id: input.taskId, userId }");
+    expect(feedback).toContain("where: { id: input.taskId, userId, providerId: { not: \"mock_canvas\" } }");
+    expect(demo).not.toContain("deleteMany");
+    expect(demo).not.toContain("calendarToken");
+    expect(demo).toContain("endDemoSession(req.userId!)");
   });
 });

@@ -14,6 +14,7 @@ syncRouter.post("/sync/run", async (req, res, next) => {
       ? await prisma.providerConnection.findFirst({ where: { id: body.connectionId, userId: req.userId } })
       : await prisma.providerConnection.findFirst({ where: { userId: req.userId, provider: "mock_canvas" } });
     if (!connection) return res.status(404).json({ error: "No provider connection found." });
+    if (connection.provider === "mock_canvas") return res.status(400).json({ error: "The simulated provider is available only through an isolated demo session." });
     if (body.stage) await setMockStage(req.userId!, connection.id, body.stage);
     const run = await runSync(req.userId!, connection.id);
     res.status(201).json({ run });
@@ -32,4 +33,3 @@ syncRouter.get("/sync/runs/:id", async (req, res, next) => {
     res.json({ run });
   } catch (error) { next(error); }
 });
-

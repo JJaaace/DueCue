@@ -26,7 +26,7 @@ export function buildWeeklyDigestText(tasks: Array<{ task: DigestTask; priorityS
 }
 
 export async function generateNotificationPreviews(userId: string) {
-  const [recommendations, user, recipients] = await Promise.all([prisma.recommendation.findMany({ where: { userId }, include: { task: { include: { course: true } } } }), prisma.user.findUnique({ where: { id: userId }, include: { settings: true } }), prisma.reminderRecipient.findMany({ where: { userId, enabled: true } })]);
+  const [recommendations, user, recipients] = await Promise.all([prisma.recommendation.findMany({ where: { userId, task: { providerId: { not: "mock_canvas" } } }, include: { task: { include: { course: true } } } }), prisma.user.findUnique({ where: { id: userId }, include: { settings: true } }), prisma.reminderRecipient.findMany({ where: { userId, enabled: true } })]);
   let created = 0;
   for (const recommendation of recommendations) {
     const task = recommendation.task;
@@ -57,8 +57,8 @@ export async function generateNotificationPreviews(userId: string) {
 
 export async function generateWeeklyDigestPreviews(userId: string) {
   const [recommendations, events, preferences, recipients, user] = await Promise.all([
-    prisma.recommendation.findMany({ where: { userId }, include: { task: { include: { course: true } }, }, orderBy: { priorityScore: "desc" } }),
-    prisma.taskEvent.findMany({ where: { userId, eventType: { in: ["created", "due_date_changed", "points_changed"] } }, include: { task: { select: { title: true } } }, orderBy: { createdAt: "desc" }, take: 3 }),
+    prisma.recommendation.findMany({ where: { userId, task: { providerId: { not: "mock_canvas" } } }, include: { task: { include: { course: true } }, }, orderBy: { priorityScore: "desc" } }),
+    prisma.taskEvent.findMany({ where: { userId, task: { providerId: { not: "mock_canvas" } }, eventType: { in: ["created", "due_date_changed", "points_changed"] } }, include: { task: { select: { title: true } } }, orderBy: { createdAt: "desc" }, take: 3 }),
     prisma.learningPreference.findMany({ where: { userId }, orderBy: { updatedAt: "desc" }, take: 1 }),
     prisma.reminderRecipient.findMany({ where: { userId, enabled: true, weeklyDigestEnabled: true } }),
     prisma.user.findUnique({ where: { id: userId }, include: { settings: true } }),

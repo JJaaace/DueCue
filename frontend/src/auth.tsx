@@ -1,5 +1,6 @@
-import { ClerkProvider, SignIn, useAuth } from "@clerk/clerk-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { ClerkProvider, SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/clerk-react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { StartupScreen } from "./components/StartupScreen";
 
 type TokenGetter = () => Promise<string | null>;
 let tokenGetter: TokenGetter = async () => null;
@@ -22,16 +23,25 @@ function ClerkSessionGate({ children }: { children: ReactNode }) {
     return () => { setAccessTokenGetter(async () => null); setTokenReady(false); };
   }, [getToken]);
 
-  if (!isLoaded || !tokenReady) return <main className="auth-loading">Loading secure DueCue workspace…</main>;
-  if (!isSignedIn) return <main className="auth-screen"><div><p>DueCue</p><h1>Sign in to your workspace</h1><span>Your coursework, cues, reminders, and calendar stay private to your account.</span><SignIn routing="hash" /></div></main>;
-  return <>{children}</>;
+  if (!isLoaded || !tokenReady) return <StartupScreen />;
+  return <AuthContext.Provider value={{ isSignedIn: Boolean(isSignedIn), clerkConfigured: true }}>{children}</AuthContext.Provider>;
+}
+
+type AuthState = { isSignedIn: boolean; clerkConfigured: boolean };
+const AuthContext = createContext<AuthState>({ isSignedIn: false, clerkConfigured: false });
+export const useDueCueAuth = () => useContext(AuthContext);
+
+export function AccountActions() {
+  const auth = useDueCueAuth();
+  if (!auth.clerkConfigured) return <span className="account-unavailable">Sign-in setup pending</span>;
+  if (auth.isSignedIn) return <div className="account-actions"><span>Private workspace</span><UserButton /></div>;
+  return <div className="account-actions"><SignInButton mode="modal"><button type="button" className="account-signin">Sign in</button></SignInButton><SignUpButton mode="modal"><button type="button" className="account-signup">Create account</button></SignUpButton></div>;
 }
 
 export function DueCueAuth({ children }: { children: ReactNode }) {
   const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
   if (!publishableKey) {
-    if (import.meta.env.PROD) return <main className="auth-screen"><div><p>DueCue</p><h1>Authentication is not configured</h1><span>This deployment needs a Clerk publishable key before it can load a private workspace.</span></div></main>;
-    return <>{children}</>;
+    return <AuthContext.Provider value={{ isSignedIn: false, clerkConfigured: false }}>{children}</AuthContext.Provider>;
   }
   return <ClerkProvider publishableKey={publishableKey}><ClerkSessionGate>{children}</ClerkSessionGate></ClerkProvider>;
 }
