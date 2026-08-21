@@ -1,122 +1,156 @@
 # DueCue
 
-> An adaptive academic deadline assistant that helps students decide when to start—not merely when work is due.
+**An adaptive academic planning platform that recommends when students should start coursework—not merely when it is due.**
 
-Canvas tells students what is due. DueCue turns coursework into clear start windows, ranks what deserves attention first, detects deadline pileups, suggests useful work for the time available, explains each recommendation, previews reminders, and learns from timing feedback. It is a portfolio-ready React, Express, Prisma, and PostgreSQL project with a safe simulated CarmenCanvas-style demo workspace.
+[Live Demo](https://due-cue-frontend.vercel.app) · [Repository](https://github.com/JJaaace/DueCue)
 
-> **Unofficial demo:** DueCue is OSU/Buckeye-inspired visually, but is not affiliated with Ohio State, CarmenCanvas, or Canvas. It does not scrape school systems or collect school credentials.
+![DueCue dashboard showing a personalized Today’s Plan with ranked coursework recommendations](docs/screenshots/dashboard.png)
 
-## Screenshots
+*The recruiter demo dashboard turns upcoming coursework into a ranked, explainable plan.*
 
-Add screenshots here before sharing publicly. See [the capture checklist](docs/screenshots/README.md) for exact views, filenames, and privacy guidance.
+DueCue is an independent portfolio project and is not affiliated with, endorsed by, or connected to The Ohio State University or CarmenCanvas.
 
-| Home and Next Cue | Task detail and reasoning |
+## The Problem
+
+Calendars are good at showing when assignments are due, but a due date alone does not tell a student when to begin. Work with the same deadline can demand very different amounts of time, and a manageable week can quickly become overloaded when several deadlines cluster together.
+
+DueCue turns coursework into an actionable plan. It calculates useful start windows, ranks priorities, detects deadline changes and workload pileups, and adjusts future timing recommendations from student feedback—all while keeping the reasoning visible.
+
+## Try the Demo
+
+The public deployment is designed as a recruiter demo, and no signup is required. A first-time visitor enters an isolated demo session with realistic coursework and can:
+
+- Inspect the next recommended task and the factors behind its timing.
+- Explore upcoming work, calendar events, reminders, and task details.
+- Mark recommendations as too early, about right, or too late.
+- Run staged sync changes to see how DueCue reacts to a new assignment and a shifted deadline.
+
+Each visitor receives separate demo state, so feedback and staged changes do not affect another visitor's session. The API runs on Render's free service and may take a short time to wake after inactivity.
+
+## Product Tour
+
+| Explainable task recommendations | Coursework change detection |
 | --- | --- |
-| `docs/screenshots/home.png` *(placeholder)* | `docs/screenshots/task-drawer.png` *(placeholder)* |
+| ![DueCue task drawer explaining a recommended start window, cue score, confidence, and reminder preview](docs/screenshots/task-recommendation.png) | ![DueCue Recent Changes panel showing a recalculated task, moved deadline, and newly detected coursework](docs/screenshots/sync-changes.png) |
+| Open any cue to inspect its timing, contributing factors, reminder preview, and feedback controls. | Review meaningful sync changes and see when DueCue recalculates the plan. |
 
-| Safe import | Sync changes |
+![DueCue calendar showing assignment due dates and recommended start windows](docs/screenshots/calendar.png)
+
+*The calendar combines due dates and start windows in one filterable coursework timeline.*
+
+## Key Features
+
+- **Explainable recommended start windows** — Suggests when to begin and shows the due-date pressure, task size, course context, and workload factors behind the recommendation.
+- **Cue score and priority ranking** — Converts timing and workload signals into a sortable score so the most useful next action is easy to find.
+- **Deadline-change and workload-pileup detection** — Surfaces changed dates and clustered deadlines before they become surprises.
+- **Feedback-driven timing adjustments** — Uses “too early,” “about right,” and “too late” feedback to tune future recommendations for that student.
+- **Coursework import** — Supports iCal/ICS calendar-feed imports and a documented manual JSON format without scraping a learning-management system.
+- **Calendar and reminder tools** — Provides a connected calendar feed, one-time calendar export, and reminder previews tied to recommendation timing.
+- **Isolated recruiter demo** — Gives every anonymous visitor temporary state and a staged sync sequence for evaluating the product safely.
+
+## How Recommendations Work
+
+DueCue uses a deterministic planning model rather than presenting its recommendations as AI. The engine evaluates concrete inputs such as due date, task type, estimated effort, course priority, nearby workload, recent deadline changes, grade-goal context, and the student's prior timing feedback.
+
+From those inputs it produces a recommended start time, a cue score, a confidence level, an explanation, and reminder timing. The same stored inputs produce the same result, while explicit feedback changes the student's timing adjustment for later recommendations. This makes each recommendation inspectable and testable instead of opaque.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    UI["React 19 + Vite"] -->|REST API| API["Express 5"]
+    API --> ENGINE["Recommendation + sync engine"]
+    API --> DB["Prisma + PostgreSQL / Neon"]
+    API --> DEMO["Isolated in-memory demo sessions"]
+    ENGINE --> UI
+```
+
+The frontend is deployed on Vercel and communicates with the Render-hosted API. Persistent application data is modeled through Prisma and PostgreSQL; the public recruiter demo uses separate, temporary in-memory sessions. Public demo routes and authenticated owner routes are intentionally distinct boundaries.
+
+For data flow, route boundaries, deployment configuration, and security details, see [Architecture](docs/ARCHITECTURE.md) and [Deployment](docs/DEPLOYMENT.md).
+
+## Technology
+
+| Layer | Technology |
 | --- | --- |
-| `docs/screenshots/import.png` *(placeholder)* | `docs/screenshots/sync-changes.png` *(placeholder)* |
+| Frontend | React 19, TypeScript, Vite |
+| API | Express 5, TypeScript |
+| Data | Prisma, PostgreSQL / Neon |
+| Hosting | Vercel, Render |
 
-## What it demonstrates
+The interface uses a custom responsive design system and motion treatment built in the application code. The recommendation and sync behavior are implemented as domain logic that can be exercised independently of the UI.
 
-- Explainable start-window recommendations with priority and confidence scores.
-- A deterministic **Today Plan** that ranks what to start first using urgency, open start windows, cue score, effort, task type, source changes, and deadline pileups.
-- A calm **Workload Radar** that detects clustered deadlines and start windows before they become a stressful surprise.
-- Task-risk labels and an **I have…** session planner with quick presets, exact custom durations, and one or more personalized coursework blocks that fit the time available.
-- A compact **Weekly Game Plan** with actionable week-ahead signals, meaningful change summaries, and deterministic batch suggestions for quick wins, shared-course work, and same-day deadlines.
-- Optional, private grade goals that give comparable coursework a bounded priority adjustment—without overriding urgent, high-value work.
-- A polished student dashboard, coursework filters, task drawer, feedback loop, and private ICS calendar export.
-- Provider-based ingestion with a staged mock Canvas provider, transactional upserts, task-change events, and sync-run history.
-- Safe manual JSON and ICS imports—no scraping, passwords, or academic access tokens.
-- Preview-first reminders, deduplication, user timing preferences, and optional Resend delivery behind environment variables.
-- Recruiter demo mode: staged sync story and one-click reset to a clean baseline.
+## Local Setup
 
-## Recommendation engine
+### Prerequisites
 
-DueCue starts with a deterministic lead time by task type: short for readings/discussions, longer for projects and exams. It adjusts that window using due date, task type, estimated effort, points, task difficulty, course difficulty, reminder style, source changes, and prior feedback.
+- Node.js 20 or newer
+- npm
+- PostgreSQL, or a Neon connection string
 
-The result is persisted with a recommended start time, `0–100` cue score, confidence score, explanation, and factor list. Feedback such as **Too early** or **Too late** creates bounded learning preferences that influence future work of the same type/course. The task drawer makes these inputs visible rather than treating the result as a black box.
-
-The Home intelligence layer deliberately stays deterministic and explainable—there is no AI/LLM claim. It combines existing recommendations with due-date urgency, start-window status, estimated effort, task type, recent deadline changes, and same-day workload clustering. That powers a ranked Today Plan, calm risk labels, Workload Radar, and available-time suggestions.
-
-The same signals create a concise Weekly Game Plan and optional weekly digest preview: top work to start, workload watches, meaningful changes, optional grade-goal context, and learning signals. Batch suggestions use simple rules (shared course, quick low-effort work, and same-day deadlines) to reduce context switching rather than pretending to schedule a student’s full life.
-
-### Optional grade goals
-
-Students can manually enter a current grade, target grade, and course importance from the Work page. This information stays private to the workspace and is optional: without it, DueCue works normally. When a course is below target, comparable coursework receives a bounded boost; a high-value or imminent exam/project can still rank above it. When a course is safely above target, only low-value, low-risk work receives a small reduction. DueCue does not currently read grades from Canvas, scrape school systems, request passwords, or request Canvas access tokens. An approved future Canvas OAuth/API integration could provide richer metadata.
-
-## Safe data boundary
-
-Current supported sources are the simulated demo, user-authorized **iCal feed sync**, and secondary manual JSON. iCal feed URLs are DueCue’s first real integration path: they can provide event titles, due dates, and sometimes course/description/link data, then be re-checked while valid. Feeds do not reliably include grades, submissions, rubrics, exact points, or full Canvas metadata; students can enrich imported tasks with type, effort, difficulty, points, and status to improve recommendations. DueCue does **not** scrape Canvas/Carmen, automate school logins, store passwords, or collect school access tokens. Official Canvas OAuth remains a future, approval-dependent path for richer metadata.
-
-Reminder delivery is deliberately separate from login identity. Users can maintain a primary reminder email and opt-in additional self, parent/guardian, or other recipients with per-reminder controls. Added recipients stay preview-only until independently verified; demo workspaces use an explicit mock-verification state. School-email verification is a future option for campus pilots, not a current requirement.
-
-Start Window Open emails are the core reminder: they summarize the course, task, deadline, start window, cue score, and effort in a few lines. Their **Too early**, **Just right**, and **Too late** links carry opaque, one-time, expiring tokens scoped to the student, task, recommendation, notification, recipient, and selected rating. A click records feedback only for that student’s learning preferences and opens a DueCue confirmation page; expired, mismatched, or duplicate clicks do nothing.
-
-## Local setup
-
-Prerequisites: Node.js 20+, npm, and PostgreSQL.
+Clone the repository and install dependencies:
 
 ```bash
+git clone https://github.com/JJaaace/DueCue.git
+cd DueCue
 npm install
+```
+
+Create local environment files from the supplied examples:
+
+```bash
 cp backend/.env.example backend/.env
-# Set DATABASE_URL in backend/.env
+cp frontend/.env.example frontend/.env
+```
+
+Set a valid `DATABASE_URL`, then prepare the database and start both applications:
+
+```bash
 npm run db:migrate
 npm run db:seed
 npm run dev
 ```
 
-The app is normally served at `http://localhost:5173` (Vite may choose `5174` if that port is busy). The API is `http://localhost:4000/api`; health is `GET /api/health`.
-
-```bash
-npm run build
-npm test
-```
-
-## Demo in two minutes
-
-See [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md). Start on Home, open **See why**, submit feedback, run the staged sync, then show safe import/calendar options. Use **Reset recruiter demo** in the sidebar before a new walkthrough.
-
-## Architecture
-
-```txt
-React / Vite UI
-       │ REST
-Express API ── Prisma ── PostgreSQL
-       │
-Provider registry → MockCanvasProvider / manual JSON / ICS
-       │
-Sync engine → task events → recommendations → notification previews / ICS
-```
-
-Detailed design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Deployment
-
-Production uses isolated anonymous demo sessions for signed-out recruiters and verified Clerk session tokens for private student workspaces. Local development keeps the seeded workspace through `AUTH_MODE=dev`; public deployments must use `AUTH_MODE=clerk` with `CLERK_SECRET_KEY` (and `VITE_CLERK_PUBLISHABLE_KEY` on the frontend). See [Deployment](docs/DEPLOYMENT.md) for the Vercel, Render, Neon, CORS, migration, cold-start, and visitor-flow checklist.
-
-The intended deployment shape is Vercel (frontend), Render (API), and Neon (Postgres). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for environment variables, CORS, Prisma migrations, demo database setup, and the remaining production-auth requirement.
-
-## Limitations and roadmap
-
-- The current primary source is simulated data; real Canvas OAuth is not implemented.
-- Anonymous demo sessions are in memory; horizontally scaled production should move them to a shared expiring store.
-- Resend exists behind configuration, but preview mode is the default.
-- A production release should add error monitoring and a separate demo database/tenant.
-
-Near-term roadmap: production auth, approved OAuth/iCal integrations, import-review history, production observability, and a small student pilot. See [docs/ROADMAP.md](docs/ROADMAP.md).
-
-## Resume bullets
-
-See [docs/RESUME_BULLETS.md](docs/RESUME_BULLETS.md).
+The frontend normally runs at `http://localhost:5173`; the API normally runs at `http://localhost:4000`. Environment requirements differ between local development, the anonymous demo, and authenticated deployments, so consult the [deployment guide](docs/DEPLOYMENT.md) before configuring a hosted environment.
 
 ## Commands
 
+Run these from the repository root:
+
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Start frontend and API |
-| `npm run build` | Build/type-check both workspaces |
-| `npm test` | Run backend tests |
+| `npm run dev` | Start the frontend and backend development servers |
+| `npm run build` | Build all workspaces for production |
+| `npm test` | Run the backend test suite |
+| `npm run test --workspace=frontend` | Run the frontend test suite |
 | `npm run db:migrate` | Apply local Prisma migrations |
-| `npm run db:seed` | Reset and seed the local demo user |
+| `npm run db:seed` | Reset and seed the local demo workspace |
+
+## Testing
+
+The project includes frontend component and interaction tests, backend route tests, recommendation-engine coverage, public-demo session tests, authentication-boundary checks, and import/sync behavior tests. Before opening a pull request, run:
+
+```bash
+npm run test --workspace=backend
+npm run test --workspace=frontend
+npm run build
+git diff --check
+```
+
+## Documentation
+
+- [Architecture and data flow](docs/ARCHITECTURE.md)
+- [Deployment and environment configuration](docs/DEPLOYMENT.md)
+- [Recruiter demo walkthrough](docs/DEMO_SCRIPT.md)
+- [Manual import format](docs/IMPORT_FORMAT.md)
+- [Product roadmap](docs/ROADMAP.md)
+
+## Current Limitations
+
+- The public deployment is currently a recruiter demo, not a production student service.
+- Real Canvas OAuth is not implemented. Current coursework ingestion uses calendar feeds, manual imports, or staged demo data.
+- Anonymous demo sessions are temporary and stored in memory; they can disappear when the API restarts or the session expires.
+- Email delivery remains preview-only. DueCue can demonstrate reminder content and timing, but it does not send production email.
+- Clerk integration exists in the codebase, but production Clerk authentication must not be considered active while the deployed Render service uses `AUTH_MODE=dev`.
+
+These constraints are deliberate and visible so the demo represents what is implemented today. The roadmap and deployment documentation describe the path from the isolated recruiter experience to a durable authenticated product without overstating the current system.
