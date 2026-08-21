@@ -10,14 +10,14 @@ async function preferenceFor(userId: string, courseId: string, taskType: string)
 }
 
 export async function recalculateTaskRecommendation(userId: string, taskId: string) {
-  const task = await prisma.academicTask.findFirst({ where: { id: taskId, userId }, include: { course: true } });
+  const task = await prisma.academicTask.findFirst({ where: { id: taskId, userId, providerId: { not: "mock_canvas" } }, include: { course: true } });
   if (!task || task.removedAt || task.status === "done") return null;
   const [settings, preference, dueEvent] = await Promise.all([
     prisma.userSettings.findUnique({ where: { userId } }),
     preferenceFor(userId, task.courseId, task.type),
     prisma.taskEvent.findFirst({ where: { taskId, eventType: "due_date_changed" }, orderBy: { createdAt: "desc" } }),
   ]);
-  const calculated = calculateRecommendation({ type: task.type, dueAt: task.dueAt, pointsPossible: task.pointsPossible, estimatedMinutes: task.estimatedMinutes, taskDifficulty: task.difficulty, courseDifficulty: task.course.difficulty, reminderStyle: settings?.reminderStyle ?? "balanced", adjustmentDays: preference?.leadTimeAdjustmentDays, sampleSize: preference?.sampleSize, dueDateChanged: Boolean(dueEvent) });
+  const calculated = calculateRecommendation({ type: task.type, dueAt: task.dueAt, pointsPossible: task.pointsPossible, gradeWeight: task.gradeWeight, affectsGrade: task.affectsGrade, estimatedMinutes: task.estimatedMinutes, taskDifficulty: task.difficulty, courseDifficulty: task.course.difficulty, currentGradePercent: task.course.currentGradePercent, targetGradePercent: task.course.targetGradePercent, courseImportance: task.course.courseImportance, reminderStyle: settings?.reminderStyle ?? "balanced", adjustmentDays: preference?.leadTimeAdjustmentDays, sampleSize: preference?.sampleSize, dueDateChanged: Boolean(dueEvent) });
   const { shouldStartNow, isOverdue, factors, ...recommendationData } = calculated;
   const status = isOverdue ? "overdue" : shouldStartNow ? "start_now" : "upcoming";
   const existing = await prisma.recommendation.findFirst({ where: { userId, taskId }, orderBy: { version: "desc" } });
@@ -29,6 +29,6 @@ export async function recalculateTaskRecommendation(userId: string, taskId: stri
 }
 
 export async function recalculateUserRecommendations(userId: string) {
-  const tasks = await prisma.academicTask.findMany({ where: { userId, removedAt: null, status: { not: "done" } }, select: { id: true } });
+  const tasks = await prisma.academicTask.findMany({ where: { userId, providerId: { not: "mock_canvas" }, removedAt: null, status: { not: "done" } }, select: { id: true } });
   return Promise.all(tasks.map((task) => recalculateTaskRecommendation(userId, task.id)));
 }

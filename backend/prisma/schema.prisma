@@ -22,6 +22,22 @@ enum CourseDifficulty {
   normal
   hard
 }
+enum GradeGoalLabel {
+  maintain_a
+  raise_grade
+  pass_safely
+  custom
+}
+enum CourseImportance {
+  normal
+  important
+  critical
+}
+enum GradeDataSource {
+  manual
+  future_canvas
+  unknown
+}
 enum TaskType {
   assignment
   quiz
@@ -135,6 +151,7 @@ model UserSettings {
   id                       String              @id @default(cuid())
   userId                   String              @unique
   defaultReminderHour      Int                 @default(9)
+  defaultReminderMinute    Int                 @default(0)
   reminderStyle            ReminderStyle       @default(balanced)
   defaultChannel           NotificationChannel @default(in_app)
   weekendRemindersEnabled  Boolean             @default(true)
@@ -157,6 +174,11 @@ model Course {
   color          String           @default("#5EEAD4")
   term           String?
   difficulty     CourseDifficulty @default(normal)
+  currentGradePercent Float?
+  targetGradePercent  Float?
+  gradeGoalLabel      GradeGoalLabel?
+  courseImportance    CourseImportance @default(normal)
+  gradeDataSource     GradeDataSource @default(unknown)
   active         Boolean          @default(true)
   lastSyncedAt   DateTime?
   createdAt      DateTime         @default(now())
@@ -180,6 +202,8 @@ model AcademicTask {
   dueAt            DateTime
   availableAt      DateTime?
   pointsPossible   Float?
+  gradeWeight      Float?
+  affectsGrade     Boolean        @default(true)
   estimatedMinutes Int?
   difficulty       TaskDifficulty @default(medium)
   status           TaskStatus     @default(upcoming)

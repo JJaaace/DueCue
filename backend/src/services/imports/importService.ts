@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { prisma } from "../../lib/prisma.js";
+import type { Prisma } from "@prisma/client";
 import { recalculateUserRecommendations } from "../recommendations/recommendationService.js";
 import { generateNotificationPreviews } from "../notifications/notificationService.js";
 
@@ -7,8 +8,8 @@ export type ImportedTask = { id?: string; courseCode: string; courseName?: strin
 const digest = (value: string) => createHash("sha256").update(value).digest("hex").slice(0, 30);
 const color = (code: string) => ["#60A5FA", "#A78BFA", "#F59E0B", "#34D399", "#FB7185"][code.length % 5]!;
 
-export async function importTasks(userId: string, tasks: ImportedTask[], source: "manual_import" | "ical_feed", displayName: string) {
-  const connection = await prisma.providerConnection.upsert({ where: { userId_provider: { userId, provider: source } }, create: { userId, provider: source, displayName, status: "connected", config: { userAuthorized: true } }, update: { displayName, status: "connected", lastSyncAt: new Date() } });
+export async function importTasks(userId: string, tasks: ImportedTask[], source: "manual_import" | "ical_feed", displayName: string, config: Prisma.InputJsonValue = { userAuthorized: true }) {
+  const connection = await prisma.providerConnection.upsert({ where: { userId_provider: { userId, provider: source } }, create: { userId, provider: source, displayName, status: "connected", config }, update: { displayName, status: "connected", lastSyncAt: new Date(), config } });
   let created = 0; let updated = 0;
   for (const item of tasks) {
     const externalCourseId = `import-${digest(item.courseCode)}`;
@@ -22,6 +23,14 @@ export async function importTasks(userId: string, tasks: ImportedTask[], source:
   await prisma.providerConnection.update({ where: { id: connection.id }, data: { lastSyncAt: new Date() } });
   await recalculateUserRecommendations(userId); await generateNotificationPreviews(userId);
   return { created, updated, imported: tasks.length };
+}
+
+export async function importIcalFeedUrl(userId: string, feedUrl: string) {
+  const response = await fetch(feedUrl, { headers: { Accept: "text/calendar, text/plain;q=0.8" }, signal: AbortSignal.timeout(12_000) });
+  if (!response.ok) throw new Error(`Calendar feed returned ${response.status} ${response.statusText}.`);
+  const ical = await response.text(); if (ical.length > 2_000_000) throw new Error("Calendar feed is too large (maximum 2 MB).");
+  const tasks = parseIcal(ical); if (!tasks.length) throw new Error("No events with SUMMARY and DTSTART were found in this calendar feed.");
+  return importTasks(userId, tasks, "ical_feed", "User-authorized iCal feed", { userAuthorized: true, feedUrl, syncMode: "user_provided_feed" });
 }
 
 export function parseIcal(text: string): ImportedTask[] {

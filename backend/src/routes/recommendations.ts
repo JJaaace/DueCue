@@ -6,7 +6,7 @@ import { recalculateTaskRecommendation, recalculateUserRecommendations } from ".
 export const recommendationRouter = Router();
 recommendationRouter.use(requireUser);
 recommendationRouter.get("/recommendations", async (req, res, next) => {
-  try { res.json({ recommendations: await prisma.recommendation.findMany({ where: { userId: req.userId }, include: { task: { include: { course: true } } }, orderBy: { priorityScore: "desc" } }) }); } catch (error) { next(error); }
+  try { res.json({ recommendations: await prisma.recommendation.findMany({ where: { userId: req.userId, task: { providerId: { not: "mock_canvas" } } }, include: { task: { include: { course: true } } }, orderBy: { priorityScore: "desc" } }) }); } catch (error) { next(error); }
 });
 recommendationRouter.get("/recommendations/:taskId", async (req, res, next) => {
   try {
