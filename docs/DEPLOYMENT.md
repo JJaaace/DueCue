@@ -33,6 +33,7 @@ Set the variables below. The API validates configuration at startup; production 
 | `NODE_ENV` | Yes | `production` |
 | `DATABASE_URL` | Yes | Neon connection string |
 | `FRONTEND_URL` | Yes | Exact deployed Vercel origin |
+| `FRONTEND_URLS` | Preview use | Comma-separated additional exact Vercel Preview origins; trailing slashes are normalized and wildcards are not supported |
 | `PUBLIC_API_URL` | Yes | Public HTTPS API origin used in one-click email feedback links |
 | `AUTH_MODE` | Yes | `clerk` for production; anonymous demo routes remain public and isolated |
 | `CLERK_SECRET_KEY` | Yes* | Clerk backend secret key used to verify session tokens (`sk_…`) |
@@ -52,7 +53,54 @@ Import the same repository and set the project root directory to `frontend`.
 | `VITE_API_BASE_URL` | `https://your-render-service.onrender.com` |
 | `VITE_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (`pk_…`); safe for browser use |
 
-The Vercel project root must be `frontend`. `frontend/vercel.json` rewrites direct SPA routes to `index.html`. Deploy, then copy the exact Vercel HTTPS origin into Render's `FRONTEND_URL` and `CLERK_AUTHORIZED_PARTIES`. DueCue CORS accepts that origin and the `Authorization`, `Content-Type`, and anonymous-demo-session headers; it does not use a wildcard production origin. Changing a Vite variable requires a new Vercel deployment.
+The Vercel project root must be `frontend`. `frontend/vercel.json` rewrites direct SPA routes to `index.html`. Deploy, then copy the production Vercel HTTPS origin into Render's `FRONTEND_URL`. Put explicitly approved Preview origins in `FRONTEND_URLS`, separated by commas. Include every origin that may use signed-in Clerk flows in `CLERK_AUTHORIZED_PARTIES` as well. DueCue CORS accepts only this normalized allowlist and the `Authorization`, `Content-Type`, and `X-DueCue-Demo-Session` headers; it does not use a wildcard production origin. Changing a Vite variable requires a new Vercel deployment.
+
+## Separate Render Preview backend
+
+Do not point a branch Preview frontend at the production API until the same backend commit is deployed. To test `agent/duecue-planning-intelligence` without replacing production:
+
+1. In Render, choose **New → Web Service** and connect the DueCue repository.
+2. Name the service `duecue-api-planning-preview`. This produces `https://duecue-api-planning-preview.onrender.com` if the name is available.
+3. Select branch `agent/duecue-planning-intelligence`; do not select `main`.
+4. Use the repository root as the root directory.
+5. Set build command to `npm ci && npm run build`.
+6. Set start command to `npm run db:deploy --workspace=@duecue/backend && npm run start --workspace=@duecue/backend`.
+7. Set health-check path to `/api/health`.
+8. Prefer a separate Neon branch/database for Preview so migrations and signed-in test data do not share production state.
+9. Configure the Render Preview environment:
+
+```env
+NODE_ENV=production
+AUTH_MODE=clerk
+DATABASE_URL=<Preview Neon pooled URL with required SSL parameters>
+FRONTEND_URL=https://due-cue-frontend.vercel.app
+FRONTEND_URLS=<Exact current Vercel Preview origin, with no path>
+PUBLIC_API_URL=https://duecue-api-planning-preview.onrender.com
+CLERK_SECRET_KEY=<DueCue Clerk backend secret>
+CLERK_JWT_KEY=<optional Clerk PEM JWT key>
+CLERK_AUTHORIZED_PARTIES=https://due-cue-frontend.vercel.app,<Exact current Vercel Preview origin>
+EMAIL_MODE=preview
+ENABLE_JOBS=false
+```
+
+`PORT` is supplied by Render. `RESEND_API_KEY` and `EMAIL_FROM` are not required while `EMAIL_MODE=preview`. `RECRUITER_DEMO_CLERK_USER_ID` is not required because anonymous recruiter sessions are isolated in memory.
+
+10. Deploy the Preview backend and wait for both endpoints to return `200`:
+
+```text
+https://duecue-api-planning-preview.onrender.com/api/health
+https://duecue-api-planning-preview.onrender.com/api/ready
+```
+
+11. In the Vercel Preview environment—not Production—set and then redeploy. If Vercel issues a new generated Preview origin, add that new exact origin to `FRONTEND_URLS` and `CLERK_AUTHORIZED_PARTIES` on the Render Preview service before testing:
+
+```env
+VITE_API_BASE_URL=https://duecue-api-planning-preview.onrender.com
+```
+
+Keep `VITE_CLERK_PUBLISHABLE_KEY` set to the DueCue Clerk publishable key.
+
+12. Verify the pair before merging: open the protected Vercel Preview URL, confirm `OPTIONS /api/health`, `GET /api/health`, `GET /api/public/demo/state`, and `POST /api/public/demo/session` succeed; then complete a demo sync, refresh, reset the demo, and confirm an unrelated Origin receives `403`.
 
 ## 4. Prisma migration and demo seed
 
