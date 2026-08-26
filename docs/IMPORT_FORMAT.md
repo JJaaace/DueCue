@@ -6,6 +6,19 @@ Paste a user-authorized calendar feed URL once. DueCue fetches the feed, creates
 
 Calendar feeds usually provide task/event titles, due dates, and sometimes a course name, description, or link. They do **not** reliably provide submission status, grades, rubrics, exact points, full Canvas metadata, or perfect classification. After import, enrich a task in its DueCue drawer with type, estimated effort, difficulty, points, and status; DueCue recalculates its start window immediately.
 
+The connected-feed API is authenticated and owner-scoped:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/imports/ical-feed` | Read sanitized connection and last-sync status |
+| `POST /api/imports/ical-feed` | Validate, connect, and perform the first sync |
+| `POST /api/imports/ical-feed/sync` | Re-sync the stored private feed without resubmitting it |
+| `DELETE /api/imports/ical-feed` | Disable the connection while preserving imported tasks |
+
+The connect body is `{ "url": "https://calendar.example.edu/private-feed.ics" }`. The private URL is never returned by these endpoints. DueCue requires HTTPS, resolves and rejects private/internal destinations, validates every redirect, pins the validated address for the outbound request, limits response size and redirects, and applies a fixed fetch deadline.
+
+VEVENT UIDs become hashed, stable source identities. When a UID is absent, DueCue derives a deterministic fallback from the feed, inferred course, normalized title, and due date. Repeat syncs leave identical tasks unchanged, record supported title/deadline changes, and preserve user-entered difficulty, effort, points, status, and type values.
+
 ## Manual JSON
 
 Paste an array into the Import screen:

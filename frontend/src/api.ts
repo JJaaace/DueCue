@@ -7,7 +7,7 @@ const DEMO_SESSION_KEY = "duecue:anonymous-demo-session:v1";
 export type ApiFailureKind = "configuration" | "timeout" | "network" | "authentication" | "not_found" | "server" | "request";
 
 export class ApiError extends Error {
-  constructor(message: string, public readonly kind: ApiFailureKind, public readonly status?: number, public readonly retryable = false) {
+  constructor(message: string, public readonly kind: ApiFailureKind, public readonly status?: number, public readonly retryable = false, public readonly code?: string) {
     super(message);
     this.name = "ApiError";
   }
@@ -42,11 +42,11 @@ type ApiOptions = RequestInit & {
 const wait = (milliseconds: number) => new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
 const retryDelay = (attempt: number) => Math.min(1_000 * 2 ** (attempt - 1), 8_000);
 
-function responseError(status: number, message?: string) {
-  if (status === 401 || status === 403) return new ApiError("Your session could not be verified.", "authentication", status);
+function responseError(status: number, message?: string, code?: string) {
+  if (status === 401 || status === 403) return new ApiError("Your DueCue session expired. Sign in again and retry.", "authentication", status, false, code);
   if (status === 404) return new ApiError("The requested DueCue resource was not found.", "not_found", status);
-  if (status >= 500 || status === 408 || status === 429) return new ApiError("The DueCue server is temporarily unavailable.", "server", status, true);
-  return new ApiError(message || "DueCue could not complete that request.", "request", status);
+  if (status >= 500 || status === 408 || status === 429) return new ApiError(code === "workspace_unavailable" && message ? message : "Unable to reach DueCue right now. Please try again in a moment.", "server", status, true, code);
+  return new ApiError(message || "DueCue could not complete that request.", "request", status, false, code);
 }
 
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
@@ -67,15 +67,15 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
       }
       const response = await fetch(endpoint, { ...requestOptions, headers, signal: controller.signal });
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({})) as { error?: string };
-        throw responseError(response.status, payload.error);
+        const payload = await response.json().catch(() => ({})) as { error?: string; code?: string };
+        throw responseError(response.status, payload.error, payload.code);
       }
       if (response.status === 204) return undefined as T;
       return await response.json() as T;
     } catch (error) {
       if (error instanceof ApiError) lastError = error;
-      else if (error instanceof DOMException && error.name === "AbortError") lastError = new ApiError("The DueCue server took too long to respond.", "timeout", undefined, true);
-      else lastError = new ApiError("DueCue could not reach its server.", "network", undefined, true);
+      else if (error instanceof DOMException && error.name === "AbortError") lastError = new ApiError("Unable to reach DueCue right now. Please try again in a moment.", "timeout", undefined, true);
+      else lastError = new ApiError("Unable to reach DueCue right now. Please try again in a moment.", "network", undefined, true);
       if (!lastError.retryable || attempt >= attempts) break;
       onRetry?.(attempt, lastError);
       await wait(retryDelay(attempt));

@@ -84,6 +84,7 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
     next();
   } catch (error) {
     if (error instanceof AuthenticationError) return res.status(401).json({ error: error.message });
-    next(error);
+    console.warn("workspace_auth_unavailable", { mode: env.AUTH_MODE });
+    return res.status(503).json({ code: "workspace_unavailable", error: "DueCue’s workspace database is not ready. Please try again in a moment." });
   }
 }

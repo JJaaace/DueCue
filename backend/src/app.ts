@@ -13,6 +13,7 @@ import { calendarRouter } from "./routes/calendar.js";
 import { dataRouter } from "./routes/data.js";
 import { importRouter } from "./routes/imports.js";
 import { publicDemoRouter } from "./routes/publicDemo.js";
+import { CalendarFeedError } from "./services/imports/importService.js";
 
 export const app = express();
 const allowedOrigins = buildAllowedOrigins({ nodeEnv: env.NODE_ENV, frontendUrl: env.FRONTEND_URL, frontendUrls: env.FRONTEND_URLS });
@@ -36,6 +37,7 @@ app.use((_req, res) => res.status(404).json({ error: "Route not found." }));
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (error instanceof z.ZodError) return res.status(400).json({ error: "The request was not valid." });
   if (error instanceof CorsOriginError) return res.status(403).json({ error: "This frontend is not allowed to access DueCue." });
+  if (error instanceof CalendarFeedError) return res.status(error.status).json({ code: error.code, error: error.message });
   console.error("DueCue API error", error instanceof Error ? { name: error.name, message: error.message } : { type: typeof error });
   res.status(500).json({ error: "DueCue could not complete that request." });
 });

@@ -134,6 +134,14 @@
 .setup-section-heading p{margin:0!important;color:#b6aeb1!important;font-size:12px!important;line-height:1.55!important}
 .setup-coursework .demo-setup-option,.setup-coursework .advanced-import{margin:0}
 .setup-coursework .ical-hero{margin:0}
+.import-auth-required,.feed-connection-loading,.connected-feed-state{padding:17px;border:1px solid #51494b;border-radius:8px;background:#191818}
+.import-auth-required b,.connected-feed-summary>b{display:block;color:#f2ecee;font-size:15px}
+.import-auth-required p,.feed-connection-loading,.connected-feed-summary p,.connected-feed-state>small{margin:6px 0 0;color:#aaa2a5;font-size:10px;line-height:1.55}
+.connected-feed-summary>span{display:block;margin-bottom:6px;color:#f08b9c;font:700 9px 'DM Mono';letter-spacing:.09em}
+.connected-feed-counts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;margin:15px 0;background:#4d4547;border:1px solid #4d4547;border-radius:7px;overflow:hidden}
+.connected-feed-counts>div{display:grid;gap:3px;padding:12px;background:#242122}
+.connected-feed-counts b{color:#fff;font-size:18px}.connected-feed-counts span{color:#aaa2a5;font-size:9px}
+.connected-feed-actions{display:flex;align-items:center;gap:8px}.connected-feed-actions .import-button{min-width:130px}.calendar-feed-disconnect{height:43px;border:1px solid #62595b;border-radius:6px;background:#242122;color:#c9c1c3;padding:0 14px;font:700 11px Manrope;cursor:pointer}.calendar-feed-disconnect:hover{border-color:#9d5360;color:#fff}.calendar-feed-disconnect:disabled{cursor:wait;opacity:.6}
 .setup-calendar-output{box-shadow:0 14px 32px #0002}
 .calendar-setup-link{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:12px 0 0;padding:16px 0 0;border-top:1px solid #484244;color:#aaa2a5}
 .calendar-setup-link span{font-size:11px;line-height:1.5}
@@ -163,6 +171,7 @@
 }
 @media(max-width:480px){
   .setup-hero,.setup-coursework,.future-integrations{padding:18px!important}
+  .connected-feed-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.connected-feed-actions{align-items:stretch;flex-direction:column}.connected-feed-actions .import-button,.calendar-feed-disconnect{width:100%}
   .setup-hero h2{font-size:25px}
   .calendar-setup-link button{width:100%}
   .future-integrations article{padding-right:17px;padding-top:48px}

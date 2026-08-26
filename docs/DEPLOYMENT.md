@@ -143,3 +143,16 @@ If `/api/health` succeeds but `/api/ready` fails, inspect `DATABASE_URL`, Neon a
 - Add error monitoring (for example, Sentry) without sending task descriptions, calendar tokens, or credentials in events.
 - Use HTTPS only; private calendar feed URLs are bearer tokens and should not be logged.
 - Back up Neon and test migrations against a non-production database first.
+
+## 7. School calendar-feed production check
+
+Calendar import is a protected workspace feature. A signed-out recruiter demo must not submit a private feed, and a production frontend without `VITE_CLERK_PUBLISHABLE_KEY` intentionally disables the connection form. Before testing a Carmen/Canvas feed:
+
+1. Confirm `GET /api/health` returns `200`.
+2. Confirm `GET /api/ready` returns `200`. A `503` here means the API process is running but `DATABASE_URL`, Neon availability, or deployed migrations are not ready; calendar import cannot pass the authenticated workspace lookup until this is fixed.
+3. Confirm Vercel has both `VITE_API_BASE_URL=https://duecue-api.onrender.com` and the DueCue Clerk publishable key, then redeploy because Vite variables are embedded at build time.
+4. Confirm Render uses `AUTH_MODE=clerk`, the matching `CLERK_SECRET_KEY`, the exact Vercel origin in `FRONTEND_URL` and `CLERK_AUTHORIZED_PARTIES`, and a working Neon `DATABASE_URL`.
+5. Run `npm run db:deploy --workspace=@duecue/backend` against that exact Neon database. This calendar-feed implementation adds no new schema migration, but all existing migrations must be present.
+6. Sign in, connect a private feed, and verify the API returns event/create/update/unchanged/skipped counts. Then use **Sync now** and confirm an identical feed creates no duplicates.
+
+Render must permit outbound HTTPS and DNS resolution for the school calendar host. DueCue accepts generic response MIME types because Canvas feeds are not always served consistently, but the body must contain valid iCalendar data. Never paste a private feed URL into Render logs, Vercel variables, GitHub issues, fixtures, or deployment documentation.

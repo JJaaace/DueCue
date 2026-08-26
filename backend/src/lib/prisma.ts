@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 
 export const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+  // Import connection config may contain bearer-style calendar URLs. Route/service logging is sanitized explicitly.
+  log: [],
 });
-

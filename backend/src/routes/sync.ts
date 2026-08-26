@@ -28,7 +28,7 @@ syncRouter.get("/sync/runs", async (req, res, next) => {
 
 syncRouter.get("/sync/runs/:id", async (req, res, next) => {
   try {
-    const run = await prisma.syncRun.findFirst({ where: { id: req.params.id, userId: req.userId }, include: { providerConnection: true } });
+    const run = await prisma.syncRun.findFirst({ where: { id: req.params.id, userId: req.userId }, include: { providerConnection: { select: { id: true, provider: true, displayName: true, status: true, lastSyncAt: true, createdAt: true, updatedAt: true } } } });
     if (!run) return res.status(404).json({ error: "Sync run not found." });
     res.json({ run });
   } catch (error) { next(error); }

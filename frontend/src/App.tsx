@@ -6,6 +6,7 @@ import { ApiError, api, apiBaseUrl, setAnonymousDemoSessionId, startupApi } from
 import { StartupRecovery, StartupScreen } from "./components/StartupScreen";
 import { shouldLaunchAnonymousTour } from "./demoLifecycle";
 import { buildAvailableTimePlan, buildTodayPlan, buildWeeklyGamePlan, calculateTaskRisk, detectWorkloadRadar, findBatchSuggestions } from "./intelligence";
+import { calendarImportError, calendarSyncMessage, type CalendarFeedState, type CalendarSyncResult } from "./importUi";
 import "./polish.css";
 
 const DEMO_LIFECYCLE_KEY = "duecue:demo-lifecycle:v3";
@@ -225,27 +226,111 @@ function CalendarConnection() {
   </section>;
 }
 function Setup({ onImported }: { onImported: () => Promise<void> }) {
-  const [feedUrl, setFeedUrl] = useState(""); const [value, setValue] = useState('[\n  {\n    "courseCode": "CSE 2221",\n    "courseName": "Software I",\n    "title": "Project checkpoint",\n    "dueAt": "2026-09-10T23:59:00.000Z",\n    "type": "project",\n    "pointsPossible": 40,\n    "estimatedMinutes": 180\n  }\n]'); const [icalValue, setIcalValue] = useState("BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:duecue-demo-1\nSUMMARY:Example assignment\nDTSTART:20260910T235900Z\nEND:VEVENT\nEND:VCALENDAR"); const [advancedMode, setAdvancedMode] = useState<"json" | "ical">("json"); const [message, setMessage] = useState(""); const [messageFor, setMessageFor] = useState<"feed" | "json" | "ical" | null>(null); const [failed, setFailed] = useState(false); const [importing, setImporting] = useState<"feed" | "json" | "ical" | null>(null);
-  const submit = async (mode: "feed" | "json" | "ical") => { if (importing) return; setImporting(mode); try { setMessageFor(mode); setFailed(false); const result = mode === "json" ? await api<{ imported: number }>("/imports/json", { method: "POST", body: JSON.stringify({ tasks: JSON.parse(value) }) }) : mode === "ical" ? await api<{ imported: number }>("/imports/ical", { method: "POST", body: JSON.stringify({ ical: icalValue }) }) : await api<{ imported: number }>("/imports/ical-feed", { method: "POST", body: JSON.stringify({ feedUrl }) }); setMessage(`Added ${result.imported} task${result.imported === 1 ? "" : "s"}. DueCue recalculated what to start.`); await onImported(); } catch (error) { setFailed(true); setMessage(error instanceof Error ? error.message : mode === "feed" ? "Connection failed. Check the feed URL and try again." : "Advanced import failed. Check the pasted data and try again."); } finally { setImporting(null); } };
+  const { isSignedIn, clerkConfigured } = useDueCueAuth();
+  const canConnect = isSignedIn || import.meta.env.DEV;
+  const [feedUrl, setFeedUrl] = useState("");
+  const [connection, setConnection] = useState<CalendarFeedState>({ source: null, sync: null });
+  const [loadingConnection, setLoadingConnection] = useState(canConnect);
+  const [feedBusy, setFeedBusy] = useState<"" | "connect" | "sync" | "disconnect">("");
+  const [value, setValue] = useState('[\n  {\n    "courseCode": "CSE 2221",\n    "courseName": "Software I",\n    "title": "Project checkpoint",\n    "dueAt": "2026-09-10T23:59:00.000Z",\n    "type": "project",\n    "pointsPossible": 40,\n    "estimatedMinutes": 180\n  }\n]');
+  const [icalValue, setIcalValue] = useState("BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:duecue-demo-1\nSUMMARY:Example assignment\nDTSTART:20260910T235900Z\nEND:VEVENT\nEND:VCALENDAR");
+  const [advancedMode, setAdvancedMode] = useState<"json" | "ical">("json");
+  const [message, setMessage] = useState("");
+  const [messageFor, setMessageFor] = useState<"feed" | "json" | "ical" | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [importing, setImporting] = useState<"json" | "ical" | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!canConnect) { setLoadingConnection(false); return () => { active = false; }; }
+    void api<CalendarFeedState>("/imports/ical-feed")
+      .then((state) => { if (active) setConnection(state); })
+      .catch((error) => { if (active) { setFailed(true); setMessageFor("feed"); setMessage(calendarImportError(error)); } })
+      .finally(() => { if (active) setLoadingConnection(false); });
+    return () => { active = false; };
+  }, [canConnect]);
+
+  const applyFeedResult = async (result: CalendarSyncResult) => {
+    setConnection({ source: result.source, sync: result.sync });
+    setMessage(calendarSyncMessage(result.sync));
+    setFailed(false);
+    setMessageFor("feed");
+    setFeedUrl("");
+    await onImported();
+  };
+
+  const connectFeed = async () => {
+    if (!canConnect || feedBusy) return;
+    setFeedBusy("connect"); setMessageFor("feed"); setMessage(""); setFailed(false);
+    try {
+      const result = await api<CalendarSyncResult>("/imports/ical-feed", { method: "POST", body: JSON.stringify({ url: feedUrl }), timeoutMs: 30_000 });
+      await applyFeedResult(result);
+    } catch (error) { setFailed(true); setMessage(calendarImportError(error)); }
+    finally { setFeedBusy(""); }
+  };
+
+  const syncFeed = async () => {
+    if (feedBusy) return;
+    setFeedBusy("sync"); setMessageFor("feed"); setMessage(""); setFailed(false);
+    try {
+      const result = await api<CalendarSyncResult>("/imports/ical-feed/sync", { method: "POST", timeoutMs: 30_000, attempts: 2 });
+      await applyFeedResult(result);
+    } catch (error) { setFailed(true); setMessage(calendarImportError(error)); }
+    finally { setFeedBusy(""); }
+  };
+
+  const disconnectFeed = async () => {
+    if (feedBusy) return;
+    setFeedBusy("disconnect"); setMessageFor("feed"); setMessage(""); setFailed(false);
+    try {
+      await api("/imports/ical-feed", { method: "DELETE" });
+      setConnection({ source: null, sync: null });
+      setMessage("Calendar disconnected. Existing imported tasks and your added details were kept.");
+    } catch (error) { setFailed(true); setMessage(calendarImportError(error)); }
+    finally { setFeedBusy(""); }
+  };
+
+  const submitAdvanced = async (mode: "json" | "ical") => {
+    if (!canConnect || importing) return;
+    setImporting(mode); setMessageFor(mode); setFailed(false);
+    try {
+      const result = mode === "json"
+        ? await api<{ imported: number }>("/imports/json", { method: "POST", body: JSON.stringify({ tasks: JSON.parse(value) }) })
+        : await api<{ imported: number }>("/imports/ical", { method: "POST", body: JSON.stringify({ ical: icalValue }) });
+      setMessage(`Added ${result.imported} task${result.imported === 1 ? "" : "s"}. DueCue recalculated what to start.`);
+      await onImported();
+    } catch (error) { setFailed(true); setMessage(error instanceof Error ? error.message : "Advanced import failed. Check the pasted data and try again."); }
+    finally { setImporting(null); }
+  };
+
   const help = "Required: courseCode, title, dueAt (ISO date). Optional: courseName, type, pointsPossible, estimatedMinutes, difficulty, description, sourceUrl.";
+  const source = connection.source?.status !== "disconnected" ? connection.source : null;
+  const sourceConnected = source?.status === "connected";
+  const lastSync = source?.lastSyncAt ? date(source.lastSyncAt) : "Not synced yet";
+  const counts = connection.sync;
+
   return (
     <div className="setup-page connect-coursework-page">
       <section className="setup-hero connect-coursework-hero"><div className="setup-hero-heading"><div><span>CONNECT COURSEWORK</span><h2>Connect once. DueCue keeps watch.</h2><p>Bring coursework in through a safe, user-authorized source. DueCue watches for new dates, refreshes recommendations, and prepares reminders automatically.</p></div></div></section>
       <section className="import-card setup-coursework"><header className="setup-section-heading"><span>RECOMMENDED CONNECTION</span><h2>Start with your school calendar feed</h2><p>It is the simplest current way to keep assignments and tests moving into DueCue over time.</p></header>
-      <section className="import-panel ical-hero">
-        <div className="ical-heading"><div><span>RECOMMENDED · AUTO-UPDATING</span><h3>Connect school calendar feed</h3><p>Paste your school calendar or iCal feed URL once. DueCue can periodically check it while the link remains valid, so new assignments and tests can appear after sync.</p></div><em>Connect once</em></div>
-        <div className="feed-url-field"><label>School calendar feed URL<input type="url" value={feedUrl} onChange={(event) => setFeedUrl(event.target.value)} placeholder="https://calendar.example.edu/feed.ics" /></label><button className={`import-button ${importing === "feed" ? "is-busy" : ""}`} disabled={importing === "feed"} onClick={() => submit("feed")}>{importing === "feed" ? "Connecting…" : "Connect and sync"}</button></div>
-        <div className="ical-explainer"><article><b>Usually included</b><p>Titles, dates, and sometimes course names or links.</p></article><article><b>Usually not included</b><p>Grades, rubrics, submissions, exact points, difficulty, or full Canvas details.</p></article><article><b>Still useful</b><p>DueCue can create practical cues from dates and titles while richer official connections are planned.</p></article></div>
-        <p className="feed-privacy">No school password needed. Only paste a calendar feed URL you control.</p>
-        {messageFor === "feed" && message && <p className={`import-message ${failed ? "error" : "success"}`}>{message}</p>}
-      </section>
-      <article className="demo-option demo-setup-option"><div><span>DEMO WORKSPACE</span><em>Available now</em></div><h3>Explore with realistic sample coursework</h3><p>Use “Run demo sync” to watch DueCue notice a new assignment or changed deadline and refresh its cues.</p><b>Demo mode</b></article>
-      <details className="manual-import advanced-import"><summary><span>ADVANCED / TESTING</span><b>Manual JSON or iCal</b><small>For demos, testing, or one-time cleanup.</small></summary><div><div className="advanced-import-tabs" role="tablist" aria-label="Manual import format"><button type="button" role="tab" aria-selected={advancedMode === "json"} className={advancedMode === "json" ? "selected" : ""} onClick={() => setAdvancedMode("json")}>Manual JSON</button><button type="button" role="tab" aria-selected={advancedMode === "ical"} className={advancedMode === "ical" ? "selected" : ""} onClick={() => setAdvancedMode("ical")}>iCal text</button></div>{advancedMode === "json" ? <><textarea aria-label="Task JSON" value={value} onChange={(event) => setValue(event.target.value)} spellCheck={false} /><p>{help}</p></> : <><textarea aria-label="iCal text" value={icalValue} onChange={(event) => setIcalValue(event.target.value)} spellCheck={false} /><p>Paste raw iCal calendar text containing one or more events. Unlike a connected feed, this is a one-time import.</p></>}<button className={`import-button ${importing === advancedMode ? "is-busy" : ""}`} disabled={importing === advancedMode} onClick={() => submit(advancedMode)}>{importing === advancedMode ? "Importing…" : `Import ${advancedMode === "json" ? "JSON tasks" : "iCal events"}`}</button>{messageFor === advancedMode && message && <p className={`import-message ${failed ? "error" : "success"}`}>{message}</p>}</div></details>
-      <article className="canvas-source-card"><div><span>FUTURE CONNECTION</span><h3>Official Canvas connection</h3><p>If approved, a future Canvas connection could add richer details such as points, submissions, grades, and rubrics.</p><small>No school password or access token is requested.</small></div><em>Planned</em></article>
+        <section className="import-panel ical-hero">
+          <div className="ical-heading"><div><span>RECOMMENDED · CONNECT ONCE</span><h3>{source ? source.displayName : "Connect school calendar feed"}</h3><p>{source ? sourceConnected ? "DueCue can securely re-check this private feed without asking you to paste it again." : "The last attempt did not finish. Retry the stored private feed or disconnect it safely." : "Paste your school calendar or iCal feed URL once. DueCue remembers it so you can securely sync again without pasting it each time."}</p></div><em>{source ? sourceConnected ? "Connected ✓" : "Needs attention" : "Connect once"}</em></div>
+          {!canConnect ? <div className="import-auth-required"><b>{clerkConfigured ? "Sign in to connect your calendar" : "Sign-in setup is unavailable on this deployment"}</b><p>{clerkConfigured ? "Your private calendar and coursework belong in an authenticated DueCue workspace, not the temporary recruiter demo." : "The site administrator must configure Clerk before private calendar feeds can be connected."}</p></div>
+            : loadingConnection ? <p className="feed-connection-loading">Checking your calendar connection…</p>
+              : source ? <div className="connected-feed-state"><div className="connected-feed-summary"><span>{sourceConnected ? "CONNECTED CALENDAR" : "CALENDAR NEEDS ATTENTION"}</span><b>{source.providerHost ?? "Private school calendar"}</b><p>Last synced {lastSync}</p></div>{counts && <div className="connected-feed-counts"><div><b>{counts.eventsFound}</b><span>events found</span></div><div><b>{counts.tasksCreated}</b><span>new tasks</span></div><div><b>{counts.tasksUpdated}</b><span>updated</span></div><div><b>{counts.tasksUnchanged}</b><span>up to date</span></div></div>}<div className="connected-feed-actions"><button type="button" className={`import-button ${feedBusy === "sync" ? "is-busy" : ""}`} disabled={Boolean(feedBusy)} onClick={() => void syncFeed()}>{feedBusy === "sync" ? "Syncing…" : sourceConnected ? "Sync now" : "Retry sync"}</button><button type="button" className="calendar-feed-disconnect" disabled={Boolean(feedBusy)} onClick={() => void disconnectFeed()}>{feedBusy === "disconnect" ? "Disconnecting…" : "Disconnect"}</button></div><small>The private feed URL stays hidden. Disconnecting keeps imported tasks and any details you added.</small></div>
+                : <div className="feed-url-field"><label>School calendar feed URL<input type="url" autoComplete="off" value={feedUrl} onChange={(event) => setFeedUrl(event.target.value)} placeholder="https://calendar.example.edu/feed.ics" /></label><button className={`import-button ${feedBusy === "connect" ? "is-busy" : ""}`} disabled={feedBusy === "connect" || !feedUrl.trim()} onClick={() => void connectFeed()}>{feedBusy === "connect" ? "Connecting to DueCue…" : "Connect and sync"}</button></div>}
+          <div className="ical-explainer"><article><b>Usually included</b><p>Titles, dates, and sometimes course names or links.</p></article><article><b>Usually not included</b><p>Grades, rubrics, submissions, exact points, difficulty, or full Canvas details.</p></article><article><b>Still useful</b><p>DueCue can create practical cues from dates and titles while richer official connections are planned.</p></article></div>
+          <p className="feed-privacy">No school password needed. Your private feed URL is stored only for your authenticated workspace and never displayed after connection.</p>
+          {messageFor === "feed" && message && <p aria-live="polite" className={`import-message ${failed ? "error" : "success"}`}>{message}</p>}
+        </section>
+        <article className="demo-option demo-setup-option"><div><span>DEMO WORKSPACE</span><em>Available now</em></div><h3>Explore with realistic sample coursework</h3><p>Use “Run demo sync” to watch DueCue notice a new assignment or changed deadline and refresh its cues.</p><b>Demo mode</b></article>
+        <details className="manual-import advanced-import"><summary><span>ADVANCED / TESTING</span><b>Manual JSON or iCal</b><small>For demos, testing, or one-time cleanup.</small></summary><div><div className="advanced-import-tabs" role="tablist" aria-label="Manual import format"><button type="button" role="tab" aria-selected={advancedMode === "json"} className={advancedMode === "json" ? "selected" : ""} onClick={() => setAdvancedMode("json")}>Manual JSON</button><button type="button" role="tab" aria-selected={advancedMode === "ical"} className={advancedMode === "ical" ? "selected" : ""} onClick={() => setAdvancedMode("ical")}>iCal text</button></div>{advancedMode === "json" ? <><textarea aria-label="Task JSON" value={value} onChange={(event) => setValue(event.target.value)} spellCheck={false} /><p>{help}</p></> : <><textarea aria-label="iCal text" value={icalValue} onChange={(event) => setIcalValue(event.target.value)} spellCheck={false} /><p>Paste raw iCal calendar text containing one or more events. Unlike a connected feed, this is a one-time import.</p></>}<button className={`import-button ${importing === advancedMode ? "is-busy" : ""}`} disabled={!canConnect || importing === advancedMode} onClick={() => void submitAdvanced(advancedMode)}>{importing === advancedMode ? "Importing…" : `Import ${advancedMode === "json" ? "JSON tasks" : "iCal events"}`}</button>{!canConnect && <p>Sign in before importing private coursework.</p>}{messageFor === advancedMode && message && <p className={`import-message ${failed ? "error" : "success"}`}>{message}</p>}</div></details>
+        <article className="canvas-source-card"><div><span>FUTURE CONNECTION</span><h3>Official Canvas connection</h3><p>If approved, a future Canvas connection could add richer details such as points, submissions, grades, and rubrics.</p><small>No school password or access token is requested.</small></div><em>Planned</em></article>
       </section>
     </div>
   );
 }
+
 function Onboarding({ initialStep, navigate, runDemoSync, openTopCue, closeCue, submitFeedback, onStepChange, requestExit, finish, syncComplete }: { initialStep: number; navigate: (page: Page) => void; runDemoSync: () => Promise<void>; openTopCue: () => void; closeCue: () => void; submitFeedback: () => Promise<void>; onStepChange: (step: number) => void; requestExit: (status: "skipped" | "exited") => void; finish: (destination: Page) => Promise<void>; syncComplete: boolean }) {
   const steps: Array<{ page: Page; selector: string; eyebrow: string; title: string; body: string; primary: string; openCue?: boolean }> = [
     { page: "home", selector: ".today-plan", eyebrow: "WELCOME", title: "Meet DueCue", body: "DueCue turns upcoming coursework into a personalized plan—showing you what to start and when.", primary: "Show me around" },
