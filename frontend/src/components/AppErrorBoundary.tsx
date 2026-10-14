@@ -11,7 +11,7 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, { faile
   }
 
   render() {
-    if (this.state.failed) return <StartupRecovery message="Something unexpected interrupted the workspace. Reloading will safely try again." retry={() => window.location.reload()} />;
+    if (this.state.failed) return <StartupRecovery message="Something unexpected interrupted the workspace. Reloading will safely try again." retry={() => window.location.reload()} autoRetry={false} />;
     return this.props.children;
   }
 }

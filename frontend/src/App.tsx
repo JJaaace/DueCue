@@ -33,7 +33,10 @@ export default function App() {
   const startDemo = async (fresh = false) => { const result = fresh ? await demoApi<{ session: DemoSession }>("/reset", { method: "POST" }) : await demoApi<{ session: DemoSession }>("/session", { method: "POST" }); applyDemo(result.session); persistLifecycle("active", result.session.step); setSelected(null); setPage("home"); setOnboarding(true); setExitConfirm(false); return result.session; };
   useEffect(() => {
     const sequence = ++bootSequence.current; const current = () => bootSequence.current === sequence; setLoading(true); setStartupError(""); setStartupLong(false); const wake = () => { if (current()) setStartupLong(true); };
-    void startupApi("/health", { onRetry: wake }).then(async () => {
+    // Render's free service can need well over a minute to wake from a cold start.
+    // Keep the health request alive for that normal production path while later
+    // workspace requests retain the shorter default retry window.
+    void startupApi("/health", { onRetry: wake, timeoutMs: 15_000, attempts: 5 }).then(async () => {
       if (!current()) return;
       let local: { status?: DemoLifecycleStatus; step?: number } = {}; if (isAnonymous) { try { local = JSON.parse(window.localStorage.getItem(lifecycleKey) ?? "{}"); } catch { local = {}; } }
       if (isAnonymous) {
@@ -45,7 +48,7 @@ export default function App() {
       await startupApi("/ready", { onRetry: wake });
       const [profile, demo, taskResult, changes] = await Promise.all([startupApi<{ user: { settings: { onboardingCompleted: boolean } } }>("/me", { onRetry: wake }), startupApi<{ active: boolean; session: DemoSession | null }>(demoPath("/state"), { onRetry: wake }), startupApi<{ tasks: Task[] }>("/tasks", { onRetry: wake }), startupApi<{ events: DashboardData["events"] }>("/sync/changes", { onRetry: wake })]);
       if (!current()) return; setData({ tasks: taskResult.tasks, events: changes.events }); if (demo.active && demo.session) { applyDemo(demo.session); setOnboarding(true); } else if (!profile.user.settings.onboardingCompleted) await startDemo();
-    }).catch((error) => { if (!current()) return; const failure = error instanceof ApiError ? error.kind : "server"; setStartupError(failure === "configuration" ? "This deployment is missing its server connection." : failure === "authentication" ? "Sign-in could not be verified. Refresh or sign in again to continue." : failure === "network" || failure === "timeout" ? "The DueCue server could not be reached. Check your connection, then try again." : "The workspace server responded, but it is not ready yet. Try again in a moment."); }).finally(() => { if (current()) setLoading(false); });
+    }).catch((error) => { if (!current()) return; const failure = error instanceof ApiError ? error.kind : "server"; setStartupError(failure === "configuration" ? "This deployment is missing its server connection." : failure === "authentication" ? "Sign-in could not be verified. Refresh or sign in again to continue." : failure === "network" || failure === "timeout" ? "DueCue’s service is taking longer than usual to wake up. We’ll keep trying automatically." : "The workspace service is not ready yet. We’ll keep trying automatically."); }).finally(() => { if (current()) setLoading(false); });
     return () => { if (bootSequence.current === sequence) bootSequence.current += 1; };
   }, [isSignedIn, startupAttempt]);
   useEffect(() => () => { if (syncHighlightTimer.current) window.clearTimeout(syncHighlightTimer.current); }, []);

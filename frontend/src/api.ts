@@ -88,4 +88,4 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   throw lastError ?? new ApiError("DueCue could not complete that request.", "request");
 }
 
-export const startupApi = <T,>(path: string, options: ApiOptions = {}) => api<T>(path, { ...options, attempts: STARTUP_ATTEMPTS });
+export const startupApi = <T,>(path: string, options: ApiOptions = {}) => api<T>(path, { ...options, attempts: options.attempts ?? STARTUP_ATTEMPTS });

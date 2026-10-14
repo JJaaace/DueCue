@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, api, resolveApiBaseUrl } from "./api";
-import { StartupScreen } from "./components/StartupScreen";
+import { StartupRecovery, StartupScreen } from "./components/StartupScreen";
 import { shouldLaunchAnonymousTour } from "./demoLifecycle";
 
 afterEach(() => {
@@ -16,6 +16,15 @@ describe("DueCue startup experience", () => {
     expect(markup).toContain("Preparing your academic workspace");
     expect(markup).toContain("role=\"status\"");
     expect(markup).toContain("DueCue");
+  });
+
+  it("keeps a slow startup reassuring and recoverable", () => {
+    const waiting = renderToStaticMarkup(<StartupScreen longWait />);
+    const recovery = renderToStaticMarkup(<StartupRecovery message="The service is still waking up." retry={() => undefined} />);
+    expect(waiting).toContain("will open automatically");
+    expect(recovery).toContain("DueCue is reconnecting");
+    expect(recovery).toContain("Trying again automatically");
+    expect(recovery).toContain("Retry now");
   });
 
   it("stops retrying after the configured startup limit", async () => {
