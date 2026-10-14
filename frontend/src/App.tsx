@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { DueCueWordmark } from "./components/DueCueMark";
+import { DueCueBusyMark, DueCueWordmark } from "./components/DueCueMark";
 import { AmbientNetworkBackground } from "./components/AmbientNetworkBackground";
 import { AccountActions, useDueCueAuth } from "./auth";
 import { ApiError, api, apiBaseUrl, setAnonymousDemoSessionId, startupApi } from "./api";
@@ -11,6 +11,7 @@ import "./polish.css";
 
 const DEMO_LIFECYCLE_KEY = "duecue:demo-lifecycle:v3";
 const ANONYMOUS_DEMO_LIFECYCLE_KEY = "duecue:anonymous-demo-lifecycle:v1";
+const CALENDAR_SYNC_TIMEOUT_MS = 90_000;
 type Page = "home" | "work" | "import" | "calendar" | "reminders";
 type Task = { id: string; providerId: string; title: string; type: string; dueAt: string; pointsPossible: number | null; status: string; estimatedMinutes: number | null; difficulty: "low" | "medium" | "high"; course: { id: string; code: string; color: string; name: string; difficulty: "easy" | "normal" | "hard"; currentGradePercent: number | null; targetGradePercent: number | null; courseImportance: "normal" | "important" | "critical"; gradeGoalLabel: string | null; gradeDataSource: "manual" | "future_canvas" | "unknown" }; recommendations: Array<{ id: string; recommendedStartAt: string; priorityScore: number; confidenceScore: number; explanation: string }> };
 type DashboardData = { tasks: Task[]; events: Array<{ id: string; eventType: string; createdAt: string; task: { title: string } }> };
@@ -266,7 +267,7 @@ function Setup({ onImported }: { onImported: () => Promise<void> }) {
     if (!canConnect || feedBusy) return;
     setFeedBusy("connect"); setMessageFor("feed"); setMessage(""); setFailed(false);
     try {
-      const result = await api<CalendarSyncResult>("/imports/ical-feed", { method: "POST", body: JSON.stringify({ url: feedUrl }), timeoutMs: 30_000 });
+      const result = await api<CalendarSyncResult>("/imports/ical-feed", { method: "POST", body: JSON.stringify({ url: feedUrl }), timeoutMs: CALENDAR_SYNC_TIMEOUT_MS });
       await applyFeedResult(result);
     } catch (error) { setFailed(true); setMessage(calendarImportError(error)); }
     finally { setFeedBusy(""); }
@@ -276,7 +277,7 @@ function Setup({ onImported }: { onImported: () => Promise<void> }) {
     if (feedBusy) return;
     setFeedBusy("sync"); setMessageFor("feed"); setMessage(""); setFailed(false);
     try {
-      const result = await api<CalendarSyncResult>("/imports/ical-feed/sync", { method: "POST", timeoutMs: 30_000, attempts: 2 });
+      const result = await api<CalendarSyncResult>("/imports/ical-feed/sync", { method: "POST", timeoutMs: CALENDAR_SYNC_TIMEOUT_MS });
       await applyFeedResult(result);
     } catch (error) { setFailed(true); setMessage(calendarImportError(error)); }
     finally { setFeedBusy(""); }
@@ -320,8 +321,8 @@ function Setup({ onImported }: { onImported: () => Promise<void> }) {
           <div className="ical-heading"><div><span>RECOMMENDED · CONNECT ONCE</span><h3>{source ? source.displayName : "Connect school calendar feed"}</h3><p>{source ? sourceConnected ? "DueCue can securely re-check this private feed without asking you to paste it again." : "The last attempt did not finish. Retry the stored private feed or disconnect it safely." : "Paste your school calendar or iCal feed URL once. DueCue remembers it so you can securely sync again without pasting it each time."}</p></div><em>{source ? sourceConnected ? "Connected ✓" : "Needs attention" : "Connect once"}</em></div>
           {!canConnect ? <div className="import-auth-required"><b>{clerkConfigured ? "Sign in to connect your calendar" : "Sign-in setup is unavailable on this deployment"}</b><p>{clerkConfigured ? "Your private calendar and coursework belong in an authenticated DueCue workspace, not the temporary recruiter demo." : "The site administrator must configure Clerk before private calendar feeds can be connected."}</p></div>
             : loadingConnection ? <p className="feed-connection-loading">Checking your calendar connection…</p>
-              : source ? <div className="connected-feed-state"><div className="connected-feed-summary"><span>{sourceConnected ? "CONNECTED CALENDAR" : "CALENDAR NEEDS ATTENTION"}</span><b>{source.providerHost ?? "Private school calendar"}</b><p>Last synced {lastSync}</p></div>{counts && <div className="connected-feed-counts"><div><b>{counts.eventsFound}</b><span>events found</span></div><div><b>{counts.tasksCreated}</b><span>new tasks</span></div><div><b>{counts.tasksUpdated}</b><span>updated</span></div><div><b>{counts.tasksUnchanged}</b><span>up to date</span></div></div>}<div className="connected-feed-actions"><button type="button" className={`import-button ${feedBusy === "sync" ? "is-busy" : ""}`} disabled={Boolean(feedBusy)} onClick={() => void syncFeed()}>{feedBusy === "sync" ? "Syncing…" : sourceConnected ? "Sync now" : "Retry sync"}</button><button type="button" className="calendar-feed-disconnect" disabled={Boolean(feedBusy)} onClick={() => void disconnectFeed()}>{feedBusy === "disconnect" ? "Disconnecting…" : "Disconnect"}</button></div><small>The private feed URL stays hidden. Disconnecting keeps imported tasks and any details you added.</small></div>
-                : <div className="feed-url-field"><label>School calendar feed URL<input type="url" autoComplete="off" value={feedUrl} onChange={(event) => setFeedUrl(event.target.value)} placeholder="https://calendar.example.edu/feed.ics" /></label><button className={`import-button ${feedBusy === "connect" ? "is-busy" : ""}`} disabled={feedBusy === "connect" || !feedUrl.trim()} onClick={() => void connectFeed()}>{feedBusy === "connect" ? "Connecting to DueCue…" : "Connect and sync"}</button></div>}
+              : source ? <div className="connected-feed-state"><div className="connected-feed-summary"><span>{sourceConnected ? "CONNECTED CALENDAR" : "CALENDAR NEEDS ATTENTION"}</span><b>{source.providerHost ?? "Private school calendar"}</b><p>Last synced {lastSync}</p></div>{counts && <div className="connected-feed-counts"><div><b>{counts.eventsFound}</b><span>events found</span></div><div><b>{counts.tasksCreated}</b><span>new tasks</span></div><div><b>{counts.tasksUpdated}</b><span>updated</span></div><div><b>{counts.tasksUnchanged}</b><span>up to date</span></div></div>}<div className="connected-feed-actions"><button type="button" className={`import-button ${feedBusy === "sync" ? "is-busy duecue-wait-button" : ""}`} disabled={Boolean(feedBusy)} onClick={() => void syncFeed()}>{feedBusy === "sync" ? <><DueCueBusyMark /><span>Syncing calendar…</span></> : sourceConnected ? "Sync now" : "Retry sync"}</button><button type="button" className="calendar-feed-disconnect" disabled={Boolean(feedBusy)} onClick={() => void disconnectFeed()}>{feedBusy === "disconnect" ? "Disconnecting…" : "Disconnect"}</button></div><small>The private feed URL stays hidden. Disconnecting keeps imported tasks and any details you added.</small></div>
+                : <div className="feed-url-field"><label>School calendar feed URL<input type="url" autoComplete="off" value={feedUrl} onChange={(event) => setFeedUrl(event.target.value)} placeholder="https://calendar.example.edu/feed.ics" /></label><button className={`import-button ${feedBusy === "connect" ? "is-busy duecue-wait-button" : ""}`} disabled={feedBusy === "connect" || !feedUrl.trim()} onClick={() => void connectFeed()}>{feedBusy === "connect" ? <><DueCueBusyMark /><span>Connecting securely…</span></> : "Connect and sync"}</button></div>}
           <div className="ical-explainer"><article><b>Usually included</b><p>Titles, dates, and sometimes course names or links.</p></article><article><b>Usually not included</b><p>Grades, rubrics, submissions, exact points, difficulty, or full Canvas details.</p></article><article><b>Still useful</b><p>DueCue can create practical cues from dates and titles while richer official connections are planned.</p></article></div>
           <p className="feed-privacy">No school password needed. Your private feed URL is stored only for your authenticated workspace and never displayed after connection.</p>
           {messageFor === "feed" && message && <p aria-live="polite" className={`import-message ${failed ? "error" : "success"}`}>{message}</p>}

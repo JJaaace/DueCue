@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { generateNotificationPreviews } from "../notifications/notificationService.js";
 import { recalculateUserRecommendations } from "../recommendations/recommendationService.js";
+import { enqueueCalendarPostImport } from "./calendarPostImport.js";
 import {
   CalendarFeedError,
   feedFingerprint,
@@ -232,7 +233,7 @@ export async function syncCalendarTasks(userId: string, tasks: ParsedCalendarTas
       tasksUpdated += 1;
     }
     return { tasksCreated, tasksUpdated, tasksUnchanged };
-  });
+  }, { maxWait: 5_000, timeout: 60_000 });
 }
 
 function countsFromMetadata(value: Prisma.JsonValue | null): CalendarSyncCounts {
@@ -243,45 +244,54 @@ function countsFromMetadata(value: Prisma.JsonValue | null): CalendarSyncCounts 
 
 async function performCalendarSync(userId: string, rawUrl: string): Promise<CalendarSyncResponse> {
   const startedAt = Date.now();
+  let stage = "load_connection";
   let connection = await prisma.providerConnection.findUnique({ where: { userId_provider: { userId, provider: "ical_feed" } } });
   let syncRunId: string | undefined;
   let providerHost = connection ? feedConfig(connection.config)?.providerHost : undefined;
   console.info("calendar_sync_started", { userId, provider: providerHost ?? "pending-validation" });
   try {
+    stage = "validate_url";
     const validated = await validateCalendarFeedUrl(rawUrl);
     providerHost = validated.hostname;
     const config: FeedConfig = { userAuthorized: true, feedUrl: rawUrl, providerHost, enabled: true, syncMode: "user_provided_feed" };
+    stage = "store_connection";
     connection = await prisma.providerConnection.upsert({
       where: { userId_provider: { userId, provider: "ical_feed" } },
       create: { userId, provider: "ical_feed", displayName: providerHost.includes("instructure.com") ? "Canvas school calendar" : "School calendar", status: "error", config },
       update: { displayName: providerHost.includes("instructure.com") ? "Canvas school calendar" : "School calendar", config },
     });
+    stage = "create_sync_run";
     const syncRun = await prisma.syncRun.create({ data: { userId, providerConnectionId: connection.id, status: "started" } });
     syncRunId = syncRun.id;
+    stage = "load_user";
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
     if (!user) throw new Error("Authenticated user workspace was not found.");
+    stage = "fetch_feed";
     const fetched = await fetchCalendarFeed(rawUrl);
     providerHost = fetched.hostname;
+    stage = "parse_feed";
     const parsed = parseCalendarFeed(fetched.text, { defaultTimeZone: user.timezone, sourceFingerprint: feedFingerprint(rawUrl) });
+    stage = "record_feed_counts";
     await prisma.syncRun.update({ where: { id: syncRun.id }, data: { tasksFound: parsed.tasks.length, metadata: { eventsFound: parsed.eventsFound, tasksSkipped: parsed.skipped } } });
+    stage = "import_tasks";
     const taskCounts = await syncCalendarTasks(userId, parsed.tasks);
     const counts: CalendarSyncCounts = { eventsFound: parsed.eventsFound, ...taskCounts, tasksSkipped: parsed.skipped };
     const finishedAt = new Date();
+    stage = "commit_sync";
     await prisma.$transaction([
       prisma.syncRun.update({ where: { id: syncRun.id }, data: { status: "success", finishedAt, tasksCreated: counts.tasksCreated, tasksUpdated: counts.tasksUpdated, metadata: counts } }),
       prisma.providerConnection.update({ where: { id: connection.id }, data: { status: "connected", lastSyncAt: finishedAt } }),
     ]);
-    if (parsed.tasks.length) {
-      await recalculateUserRecommendations(userId);
-      await generateNotificationPreviews(userId);
-    }
-    console.info("calendar_sync_completed", { userId, provider: providerHost, ...counts, durationMs: Date.now() - startedAt });
+    stage = "queue_post_import";
+    if (parsed.tasks.length) enqueueCalendarPostImport(userId, syncRun.id);
+    console.info("calendar_sync_completed", { userId, provider: providerHost, ...counts, coreDurationMs: Date.now() - startedAt });
     return { success: true, source: sourceFor({ ...connection, status: "connected", lastSyncAt: finishedAt }, syncRun.startedAt), sync: counts };
   } catch (error) {
     const safeMessage = error instanceof CalendarFeedError ? error.message : "Calendar sync could not be completed.";
     if (connection) await prisma.providerConnection.update({ where: { id: connection.id }, data: { status: "error" } }).catch(() => undefined);
     if (syncRunId) await prisma.syncRun.update({ where: { id: syncRunId }, data: { status: "failed", finishedAt: new Date(), errorMessage: safeMessage } }).catch(() => undefined);
-    console.warn("calendar_sync_failed", { userId, provider: providerHost ?? "unknown", code: error instanceof CalendarFeedError ? error.code : "internal_error", durationMs: Date.now() - startedAt });
+    const internalCode = typeof error === "object" && error && "code" in error && typeof error.code === "string" ? error.code : "internal_error";
+    console.warn("calendar_sync_failed", { userId, provider: providerHost ?? "unknown", stage, code: error instanceof CalendarFeedError ? error.code : internalCode, durationMs: Date.now() - startedAt });
     if (error instanceof CalendarFeedError) throw error;
     throw new CalendarFeedError("calendar_sync_failed", 500, "DueCue could not complete the calendar sync. Please try again in a moment.");
   }

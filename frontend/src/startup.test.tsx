@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, api, resolveApiBaseUrl } from "./api";
 import { StartupRecovery, StartupScreen } from "./components/StartupScreen";
+import { DueCueBusyMark } from "./components/DueCueMark";
 import { shouldLaunchAnonymousTour } from "./demoLifecycle";
 
 afterEach(() => {
@@ -25,6 +26,13 @@ describe("DueCue startup experience", () => {
     expect(recovery).toContain("DueCue is reconnecting");
     expect(recovery).toContain("Trying again automatically");
     expect(recovery).toContain("Retry now");
+  });
+
+  it("renders the decorative DueCue waiting mark without adding screen-reader noise", () => {
+    const markup = renderToStaticMarkup(<DueCueBusyMark />);
+    expect(markup).toContain("duecue-busy-mark");
+    expect(markup).toContain("busy-mark-string");
+    expect(markup).toContain("aria-hidden=\"true\"");
   });
 
   it("stops retrying after the configured startup limit", async () => {

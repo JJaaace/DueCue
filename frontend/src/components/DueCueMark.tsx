@@ -13,3 +13,15 @@ export function DueCueMark({ variant = "dc-monogram", size = 28, className, titl
 export function DueCueWordmark({ variant = "dc-monogram", compact = false }: { variant?: DueCueMarkVariant; compact?: boolean }) {
   return <span className="duecue-wordmark"><DueCueMark variant={variant} size={compact ? 25 : 31} /><b>DueCue</b></span>;
 }
+
+/** A compact DueCue monogram whose inner strings are plucked while work completes. */
+export function DueCueBusyMark() {
+  return <svg className="duecue-busy-mark" width="27" height="27" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+    <path className="busy-mark-d" d="M9 8h13.5C32 8 39 14 39 24s-7 16-16.5 16H9V8Z" />
+    <path className="busy-mark-c" d="M27.5 14.5a11 11 0 1 0 0 19" />
+    <path className="busy-mark-string busy-mark-string-one" d="M16 14v20" />
+    <path className="busy-mark-string busy-mark-string-two" d="M20 12.5v23" />
+    <path className="busy-mark-string busy-mark-string-three" d="M24 14v20" />
+    <circle className="busy-mark-cue" cx="28" cy="14.5" r="2.2" />
+  </svg>;
+}

@@ -587,3 +587,19 @@ html #root .portal-modules .portal-module .task-metrics{display:grid!important;g
 .account-actions{display:flex;align-items:center;gap:8px;margin-left:10px}.account-actions>span{color:#aaa5a6;font-size:10px}.account-actions button{min-height:36px;padding:8px 11px;border-radius:6px;font:700 11px Manrope,sans-serif;cursor:pointer}.account-signin{border:1px solid #686365;background:#2c2a2b;color:#eee}.account-signup{border:1px solid #e34a61;background:#c91f39;color:#fff}.account-unavailable{margin-left:auto;color:#aaa5a6;font-size:10px}
 @media(max-width:800px){.startup-screen{padding:14px}.startup-screen section{padding:30px 20px}.account-actions>span,.account-signup{display:none}.account-actions{margin-left:0}.account-actions button{padding:7px 9px}}
 @media(prefers-reduced-motion:reduce){.startup-pulse i{animation:none;opacity:.7}.startup-glow{filter:none}}
+
+/* DueCue's D holds a small harp-like C while its strings pluck during longer actions. */
+.duecue-wait-button{display:inline-flex!important;align-items:center;justify-content:center;gap:9px;min-width:190px!important}
+.duecue-busy-mark{flex:none;overflow:visible;color:#fff;filter:drop-shadow(0 0 8px #ff8b9d55);animation:busy-mark-breathe 1.8s ease-in-out infinite}
+.duecue-busy-mark path{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.busy-mark-d{stroke:currentColor;stroke-width:3.4;stroke-dasharray:92;animation:busy-mark-draw 1.8s ease-in-out infinite}
+.busy-mark-c{stroke:#ff9aaa;stroke-width:3.4;transform-origin:25px 24px;animation:busy-mark-c-pluck 1.8s cubic-bezier(.25,.8,.25,1) infinite}
+.busy-mark-string{stroke:#ffd6dd;stroke-width:1.35;transform-box:fill-box;transform-origin:center;animation:busy-string-pluck .9s ease-in-out infinite}
+.busy-mark-string-two{animation-delay:.12s}.busy-mark-string-three{animation-delay:.24s}
+.busy-mark-cue{fill:#fff;animation:busy-cue-glow 1.8s ease-in-out infinite}
+@keyframes busy-mark-breathe{0%,100%{transform:scale(.96)}50%{transform:scale(1.04)}}
+@keyframes busy-mark-draw{0%,100%{stroke-dashoffset:0;opacity:.75}50%{stroke-dashoffset:18;opacity:1}}
+@keyframes busy-mark-c-pluck{0%,100%{transform:translateX(0)}24%{transform:translateX(-1.4px) skewY(-2deg)}34%{transform:translateX(1px) skewY(1deg)}48%{transform:translateX(0)}}
+@keyframes busy-string-pluck{0%,100%{transform:scaleX(1);opacity:.55}18%{transform:scaleX(2.2);opacity:1}36%{transform:scaleX(.72);opacity:.72}52%{transform:scaleX(1)}}
+@keyframes busy-cue-glow{0%,100%{opacity:.55}50%{opacity:1;filter:drop-shadow(0 0 4px #fff)}}
+@media(prefers-reduced-motion:reduce){.duecue-busy-mark,.duecue-busy-mark *{animation:none!important}.duecue-busy-mark{opacity:.85}}

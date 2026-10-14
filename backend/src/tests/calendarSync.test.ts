@@ -66,6 +66,8 @@ describe("calendar task synchronization", () => {
   it("creates tasks on the first sync and leaves an identical second sync unchanged", async () => {
     const tasks = parseCalendarFeed(calendar(event("uid-1", "Homework 1 [MATH 1152]", "20260920T180000Z"))).tasks;
     await expect(syncCalendarTasks("user-1", tasks)).resolves.toEqual({ tasksCreated: 1, tasksUpdated: 0, tasksUnchanged: 0 });
+    const { prisma } = await import("../lib/prisma.js");
+    expect(prisma.$transaction).toHaveBeenNthCalledWith(1, expect.any(Function), { maxWait: 5_000, timeout: 60_000 });
     await expect(syncCalendarTasks("user-1", tasks)).resolves.toEqual({ tasksCreated: 0, tasksUpdated: 0, tasksUnchanged: 1 });
     expect(state.tasks.size).toBe(1);
     expect(state.events.filter((item) => item.eventType === "created")).toHaveLength(1);
