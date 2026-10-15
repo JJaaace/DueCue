@@ -51,4 +51,9 @@ describe("recommendation engine", () => {
   it("works normally when grade data is absent", () => {
     expect(calculateRecommendation(input()).factors.some((factor) => factor.includes("grade goal signal"))).toBe(false);
   });
+  it("describes overdue work accurately instead of calling it due today", () => {
+    const result = calculateRecommendation(input({ dueAt: new Date("2026-08-08T12:00:00.000Z") }));
+    expect(result.explanation).toContain("Overdue by 3 days");
+    expect(result.explanation).not.toContain("Start today");
+  });
 });

@@ -18,6 +18,7 @@ const transaction = vi.hoisted(() => ({
     }),
   },
   academicTask: {
+    findMany: vi.fn(async ({ where }: any) => [...state.tasks.values()].filter((task) => task.userId === where.userId && task.providerId === where.providerId && task.removedAt == null && !where.externalId.notIn.includes(task.externalId)).map((task) => ({ id: task.id, externalId: task.externalId }))),
     findUnique: vi.fn(async ({ where }: any) => state.tasks.get(where.userId_providerId_externalId.externalId) ?? null),
     create: vi.fn(async ({ data }: any) => {
       const task = { id: `task-${state.nextId++}`, removedAt: null, pointsPossible: null, estimatedMinutes: null, ...data };
@@ -31,9 +32,15 @@ const transaction = vi.hoisted(() => ({
       state.tasks.set(entry[0], updated);
       return updated;
     }),
+    updateMany: vi.fn(async ({ where, data }: any) => {
+      let count = 0;
+      for (const [key, task] of state.tasks) if (where.id.in.includes(task.id)) { state.tasks.set(key, { ...task, ...data }); count += 1; }
+      return { count };
+    }),
   },
   taskEvent: {
     create: vi.fn(async ({ data }: any) => { state.events.push(data); return data; }),
+    createMany: vi.fn(async ({ data }: any) => { state.events.push(...data); return { count: data.length }; }),
   },
 }));
 
@@ -49,7 +56,7 @@ vi.mock("../services/recommendations/recommendationService.js", () => ({ recalcu
 vi.mock("../services/notifications/notificationService.js", () => ({ generateNotificationPreviews: vi.fn() }));
 
 import { parseCalendarFeed } from "../services/imports/calendarFeed.js";
-import { connectCalendarFeed, syncCalendarTasks } from "../services/imports/importService.js";
+import { connectCalendarFeed, syncCalendarTasks, withCalendarSyncLock } from "../services/imports/importService.js";
 
 const calendar = (events: string) => `BEGIN:VCALENDAR\n${events}\nEND:VCALENDAR`;
 const event = (uid: string, title: string, due: string) => `BEGIN:VEVENT\nUID:${uid}\nDTSTART:${due}\nSUMMARY:${title}\nEND:VEVENT`;
@@ -63,6 +70,15 @@ beforeEach(() => {
 });
 
 describe("calendar task synchronization", () => {
+  it("deduplicates overlapping sync requests for the same user", async () => {
+    let release!: () => void;
+    const first = withCalendarSyncLock("locked-user", () => new Promise<string>((resolve) => { release = () => resolve("finished"); }));
+    await expect(withCalendarSyncLock("locked-user", async () => "overlap")).rejects.toMatchObject({ code: "calendar_sync_in_progress", status: 409 });
+    release();
+    await expect(first).resolves.toBe("finished");
+    await expect(withCalendarSyncLock("locked-user", async () => "next")).resolves.toBe("next");
+  });
+
   it("creates tasks on the first sync and leaves an identical second sync unchanged", async () => {
     const tasks = parseCalendarFeed(calendar(event("uid-1", "Homework 1 [MATH 1152]", "20260920T180000Z"))).tasks;
     await expect(syncCalendarTasks("user-1", tasks)).resolves.toEqual({ tasksCreated: 1, tasksUpdated: 0, tasksUnchanged: 0 });
@@ -89,6 +105,26 @@ describe("calendar task synchronization", () => {
     expect(updated).toMatchObject({ difficulty: "high", estimatedMinutes: 360, pointsPossible: 100, type: "exam" });
     expect(updated.dueAt.toISOString()).toBe("2026-09-22T18:00:00.000Z");
     expect(state.events.some((item) => item.eventType === "due_date_changed")).toBe(true);
+  });
+
+  it("preserves local completion and dismissal decisions during resync", async () => {
+    const first = parseCalendarFeed(calendar([event("stable-done", "Quiz 1 [CSE 2221]", "20260920T180000Z"), event("stable-dismissed", "Office hours [CSE 2221]", "20260921T180000Z")].join("\n"))).tasks;
+    await syncCalendarTasks("user-1", first);
+    const stored = [...state.tasks.values()];
+    stored[0]!.status = "done";
+    stored[1]!.status = "dismissed";
+    const moved = parseCalendarFeed(calendar([event("stable-done", "Quiz 1 [CSE 2221]", "20260922T180000Z"), event("stable-dismissed", "Office hours moved [CSE 2221]", "20260923T180000Z")].join("\n"))).tasks;
+    await syncCalendarTasks("user-1", moved);
+    expect([...state.tasks.values()].map((task) => task.status)).toEqual(["done", "dismissed"]);
+  });
+
+  it("archives active tasks removed from the source without deleting them", async () => {
+    const first = parseCalendarFeed(calendar([event("keep", "Homework [MATH 1152]", "20260920T180000Z"), event("remove", "Office hours [MATH 1152]", "20260921T180000Z")].join("\n"))).tasks;
+    await syncCalendarTasks("user-1", first);
+    await syncCalendarTasks("user-1", first.slice(0, 1));
+    const removed = [...state.tasks.values()].find((task) => task.externalId === first[1]!.externalId)!;
+    expect(removed.removedAt).toBeInstanceOf(Date);
+    expect(state.events.some((item) => item.eventType === "removed" && item.taskId === removed.id)).toBe(true);
   });
 
   it("does not collide when different courses use the same assignment title", async () => {

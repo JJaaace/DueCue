@@ -64,7 +64,10 @@ export function calculateRecommendation(input: RecommendationInput) {
   const sampleSize = input.sampleSize ?? 0;
   const confidenceScore = Math.round(Math.min(0.95, 0.35 + sampleSize * 0.08) * 100) / 100;
   const insideWindow = recommendedStartAt <= now;
-  const baseExplanation = input.dueDateChanged && insideWindow
+  const overdueDays = Math.max(1, Math.ceil((now.getTime() - input.dueAt.getTime()) / 86_400_000));
+  const baseExplanation = input.dueAt <= now
+    ? `Overdue by ${overdueDays} ${overdueDays === 1 ? "day" : "days"}. Review it and mark it complete or dismiss it if it is not actionable.`
+    : input.dueDateChanged && insideWindow
     ? `Start today: this deadline changed and is now inside your ${leadTimeDays}-day start window.`
     : insideWindow
       ? `Start today: this ${input.type} is already inside your recommended ${leadTimeDays}-day start window.`

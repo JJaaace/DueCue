@@ -11,14 +11,17 @@ export type IntelligenceTask = {
 
 export type Risk = { label: "Low" | "Watch" | "Start today" | "At risk" | "Overdue"; score: number; reason: string };
 const DAY = 86_400_000;
+const STALE_OVERDUE_DAYS = 14;
 const hoursUntil = (value: string, now: Date) => (new Date(value).getTime() - now.getTime()) / 3_600_000;
 const dayKey = (value: string) => new Date(value).toDateString();
+export const isTaskActive = (task: Pick<IntelligenceTask, "status">) => !["done", "dismissed"].includes(task.status);
+export const overdueDays = (value: string, now = new Date()) => Math.max(1, Math.ceil((now.getTime() - new Date(value).getTime()) / DAY));
 
 export function calculateTaskRisk(task: IntelligenceTask, allTasks: IntelligenceTask[] = [], changedTitles: string[] = [], now = new Date()): Risk {
   const dueHours = hoursUntil(task.dueAt, now);
   const startHours = task.recommendations[0] ? hoursUntil(task.recommendations[0].recommendedStartAt, now) : Infinity;
   const cue = task.recommendations[0]?.priorityScore ?? 35;
-  const sameDay = allTasks.filter((item) => item.status !== "done" && dayKey(item.dueAt) === dayKey(task.dueAt)).length;
+  const sameDay = allTasks.filter((item) => isTaskActive(item) && dayKey(item.dueAt) === dayKey(task.dueAt)).length;
   let score = cue * 0.28 + Math.max(0, 30 - dueHours / 6);
   if (startHours <= 0) score += 20;
   if (task.estimatedMinutes && task.estimatedMinutes >= 120) score += 7;
@@ -36,20 +39,20 @@ export function calculateTaskRisk(task: IntelligenceTask, allTasks: Intelligence
 }
 
 export function buildTodayPlan<T extends IntelligenceTask>(tasks: T[], changedTitles: string[] = [], now = new Date()) {
-  return tasks.filter((task) => task.status !== "done").map((task) => {
+  return tasks.filter(isTaskActive).filter((task) => hoursUntil(task.dueAt, now) >= -STALE_OVERDUE_DAYS * 24).map((task) => {
     const risk = calculateTaskRisk(task, tasks, changedTitles, now);
     const dueHours = hoursUntil(task.dueAt, now);
     const rec = task.recommendations[0];
     const startOpen = !!rec && hoursUntil(rec.recommendedStartAt, now) <= 0;
     const typeBoost = ["exam", "test", "project"].includes(task.type) ? 8 : task.type === "lab" ? 4 : 0;
     const rankScore = risk.score + (startOpen ? 15 : 0) + typeBoost + (dueHours <= 48 ? 12 : 0);
-    const reason = dueHours <= 24 ? "Due within a day—make progress before it becomes a pileup." : startOpen ? "Inside your start window and ready for meaningful progress." : risk.reason;
+    const reason = dueHours < 0 ? `Overdue by ${overdueDays(task.dueAt, now)} ${overdueDays(task.dueAt, now) === 1 ? "day" : "days"}—review it, complete it, or dismiss it if it is not actionable.` : dueHours <= 24 ? "Due within a day—make progress before it becomes a pileup." : startOpen ? "Inside your start window and ready for meaningful progress." : risk.reason;
     return { task, risk, rankScore, reason };
   }).sort((a, b) => b.rankScore - a.rankScore || +new Date(a.task.dueAt) - +new Date(b.task.dueAt));
 }
 
 export function detectWorkloadRadar<T extends IntelligenceTask>(tasks: T[], changedTitles: string[] = [], now = new Date()) {
-  const active = tasks.filter((task) => task.status !== "done");
+  const active = tasks.filter(isTaskActive);
   const dueGroups = Object.values(active.reduce<Record<string, T[]>>((groups, task) => { (groups[dayKey(task.dueAt)] ??= []).push(task); return groups; }, {}));
   const maxDue = dueGroups.sort((a, b) => b.length - a.length)[0] ?? [];
   const startGroups = Object.values(active.filter((task) => task.recommendations[0]).reduce<Record<string, T[]>>((groups, task) => { (groups[dayKey(task.recommendations[0].recommendedStartAt)] ??= []).push(task); return groups; }, {}));
@@ -139,7 +142,7 @@ export function buildWeeklyGamePlan<T extends IntelligenceTask>(tasks: T[], chan
 }
 
 export function findBatchSuggestions<T extends IntelligenceTask>(tasks: T[], now = new Date()) {
-  const active = tasks.filter((task) => task.status !== "done" && hoursUntil(task.dueAt, now) > -24);
+  const active = tasks.filter((task) => isTaskActive(task) && hoursUntil(task.dueAt, now) > -24);
   const suggestions: Array<{ title: string; reason: string; tasks: T[]; minutes: number }> = [];
   const quick = active.filter((task) => (task.estimatedMinutes ?? 60) <= 30).slice(0, 3);
   if (quick.length >= 2) suggestions.push({ title: "Quick wins", reason: `${quick.length} short tasks can fit into one focused block.`, tasks: quick, minutes: quick.reduce((sum, task) => sum + (task.estimatedMinutes ?? 30), 0) });

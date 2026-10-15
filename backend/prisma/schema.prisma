@@ -58,6 +58,7 @@ enum TaskStatus {
   start_now
   in_progress
   done
+  dismissed
   overdue
 }
 enum TaskEventType {
@@ -68,6 +69,8 @@ enum TaskEventType {
   points_changed
   removed
   completed
+  dismissed
+  restored
   recommendation_changed
 }
 enum ProviderKind {

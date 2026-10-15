@@ -11,7 +11,7 @@ async function preferenceFor(userId: string, courseId: string, taskType: string)
 
 export async function recalculateTaskRecommendation(userId: string, taskId: string) {
   const task = await prisma.academicTask.findFirst({ where: { id: taskId, userId, providerId: { not: "mock_canvas" } }, include: { course: true } });
-  if (!task || task.removedAt || task.status === "done") return null;
+  if (!task || task.removedAt || ["done", "dismissed"].includes(task.status)) return null;
   const [settings, preference, dueEvent] = await Promise.all([
     prisma.userSettings.findUnique({ where: { userId } }),
     preferenceFor(userId, task.courseId, task.type),
@@ -29,6 +29,6 @@ export async function recalculateTaskRecommendation(userId: string, taskId: stri
 }
 
 export async function recalculateUserRecommendations(userId: string) {
-  const tasks = await prisma.academicTask.findMany({ where: { userId, providerId: { not: "mock_canvas" }, removedAt: null, status: { not: "done" } }, select: { id: true } });
+  const tasks = await prisma.academicTask.findMany({ where: { userId, providerId: { not: "mock_canvas" }, removedAt: null, status: { notIn: ["done", "dismissed"] } }, select: { id: true } });
   return Promise.all(tasks.map((task) => recalculateTaskRecommendation(userId, task.id)));
 }

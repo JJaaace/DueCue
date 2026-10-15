@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma.js";
 import { generateNotificationPreviews } from "../notifications/notificationService.js";
 import { recalculateUserRecommendations } from "../recommendations/recommendationService.js";
 import { enqueueCalendarPostImport } from "./calendarPostImport.js";
+import { importableCalendarTasks } from "../tasks/taskLifecycle.js";
 import {
   CalendarFeedError,
   feedFingerprint,
@@ -63,7 +64,7 @@ export type CalendarSyncResponse = {
 
 const activeCalendarSyncs = new Set<string>();
 
-async function withCalendarSyncLock<T>(userId: string, operation: () => Promise<T>) {
+export async function withCalendarSyncLock<T>(userId: string, operation: () => Promise<T>) {
   if (activeCalendarSyncs.has(userId)) throw new CalendarFeedError("calendar_sync_in_progress", 409, "This calendar is already syncing. Wait a moment, then try again.");
   activeCalendarSyncs.add(userId);
   try { return await operation(); }
@@ -166,7 +167,7 @@ export async function importTasks(userId: string, tasks: ImportedTask[], source:
   return { created, updated, unchanged, imported: tasks.length };
 }
 
-export async function syncCalendarTasks(userId: string, tasks: ParsedCalendarTask[]) {
+export async function syncCalendarTasks(userId: string, tasks: ParsedCalendarTask[], sourceExternalIds = tasks.map((task) => task.externalId)) {
   return prisma.$transaction(async (transaction) => {
     let tasksCreated = 0;
     let tasksUpdated = 0;
@@ -232,6 +233,15 @@ export async function syncCalendarTasks(userId: string, tasks: ParsedCalendarTas
       if (!dueChanged && !titleChanged) await transaction.taskEvent.create({ data: { userId, taskId: existing.id, eventType: "updated", newValue: { source: "ical_feed" } } });
       tasksUpdated += 1;
     }
+    const missing = await transaction.academicTask.findMany({
+      where: { userId, providerId: "ical_feed", removedAt: null, externalId: { notIn: sourceExternalIds } },
+      select: { id: true, externalId: true },
+    });
+    if (missing.length) {
+      const removedAt = new Date();
+      await transaction.academicTask.updateMany({ where: { userId, id: { in: missing.map((task) => task.id) } }, data: { removedAt } });
+      await transaction.taskEvent.createMany({ data: missing.map((task) => ({ userId, taskId: task.id, eventType: "removed" as const, previousValue: { externalId: task.externalId }, newValue: { removedAt: removedAt.toISOString() } })) });
+    }
     return { tasksCreated, tasksUpdated, tasksUnchanged };
   }, { maxWait: 5_000, timeout: 60_000 });
 }
@@ -271,11 +281,17 @@ async function performCalendarSync(userId: string, rawUrl: string): Promise<Cale
     providerHost = fetched.hostname;
     stage = "parse_feed";
     const parsed = parseCalendarFeed(fetched.text, { defaultTimeZone: user.timezone, sourceFingerprint: feedFingerprint(rawUrl) });
+    const existingImportedTasks = await prisma.academicTask.findMany({
+      where: { userId, providerId: "ical_feed", externalId: { in: parsed.tasks.map((task) => task.externalId) } },
+      select: { externalId: true },
+    });
+    const importableTasks = importableCalendarTasks(parsed.tasks, user.timezone, new Set(existingImportedTasks.map((task) => task.externalId)));
+    const historicalSkipped = parsed.tasks.length - importableTasks.length;
     stage = "record_feed_counts";
-    await prisma.syncRun.update({ where: { id: syncRun.id }, data: { tasksFound: parsed.tasks.length, metadata: { eventsFound: parsed.eventsFound, tasksSkipped: parsed.skipped } } });
+    await prisma.syncRun.update({ where: { id: syncRun.id }, data: { tasksFound: importableTasks.length, metadata: { eventsFound: parsed.eventsFound, tasksSkipped: parsed.skipped + historicalSkipped } } });
     stage = "import_tasks";
-    const taskCounts = await syncCalendarTasks(userId, parsed.tasks);
-    const counts: CalendarSyncCounts = { eventsFound: parsed.eventsFound, ...taskCounts, tasksSkipped: parsed.skipped };
+    const taskCounts = await syncCalendarTasks(userId, importableTasks, parsed.tasks.map((task) => task.externalId));
+    const counts: CalendarSyncCounts = { eventsFound: parsed.eventsFound, ...taskCounts, tasksSkipped: parsed.skipped + historicalSkipped };
     const finishedAt = new Date();
     stage = "commit_sync";
     await prisma.$transaction([
@@ -283,7 +299,7 @@ async function performCalendarSync(userId: string, rawUrl: string): Promise<Cale
       prisma.providerConnection.update({ where: { id: connection.id }, data: { status: "connected", lastSyncAt: finishedAt } }),
     ]);
     stage = "queue_post_import";
-    if (parsed.tasks.length) enqueueCalendarPostImport(userId, syncRun.id);
+    if (importableTasks.length) enqueueCalendarPostImport(userId, syncRun.id);
     console.info("calendar_sync_completed", { userId, provider: providerHost, ...counts, coreDurationMs: Date.now() - startedAt });
     return { success: true, source: sourceFor({ ...connection, status: "connected", lastSyncAt: finishedAt }, syncRun.startedAt), sync: counts };
   } catch (error) {
