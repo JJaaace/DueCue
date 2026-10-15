@@ -17,6 +17,9 @@ describe("DueCue startup experience", () => {
     expect(markup).toContain("Preparing your academic workspace");
     expect(markup).toContain("role=\"status\"");
     expect(markup).toContain("DueCue");
+    expect(markup).toContain("startup-signal-network");
+    expect(markup).toContain("startup-logo-stage");
+    expect(markup).toContain("duecue-busy-mark");
   });
 
   it("keeps a slow startup reassuring and recoverable", () => {
