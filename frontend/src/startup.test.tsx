@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, api, resolveApiBaseUrl } from "./api";
 import { StartupRecovery, StartupScreen } from "./components/StartupScreen";
+import { PublicWelcome } from "./components/PublicWelcome";
 import { DueCueBusyMark } from "./components/DueCueMark";
 import { shouldLaunchAnonymousTour } from "./demoLifecycle";
 
@@ -20,6 +21,15 @@ describe("DueCue startup experience", () => {
     expect(markup).toContain("startup-signal-network");
     expect(markup).toContain("startup-logo-stage");
     expect(markup).toContain("duecue-busy-mark");
+  });
+
+  it("gives signed-out visitors a private landing page before they choose the demo", () => {
+    const markup = renderToStaticMarkup(<PublicWelcome startDemo={() => undefined} actions={<div>Sign in · Create account</div>} />);
+    expect(markup).toContain("Try the interactive demo");
+    expect(markup).toContain("Sign in · Create account");
+    expect(markup).toContain("nothing personal appears until you sign in");
+    expect(markup).toContain("Sample coursework is temporary");
+    expect(readFileSync(new URL("./App.tsx", import.meta.url), "utf8")).not.toContain("Hi, Jace");
   });
 
   it("keeps a slow startup reassuring and recoverable", () => {

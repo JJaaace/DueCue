@@ -9,7 +9,9 @@ type SignalNode = {
   activatedAt: number;
 };
 
-const NODE_COUNT = 30;
+const NETWORK_COLUMNS = 9;
+const NETWORK_ROWS = 7;
+const NODE_COUNT = NETWORK_COLUMNS * NETWORK_ROWS;
 const SIGNAL_SPEED = 0.38;
 
 export function StartupSignalNetwork({ onLogoPulse }: { onLogoPulse?: () => void }) {
@@ -31,11 +33,15 @@ export function StartupSignalNetwork({ onLogoPulse }: { onLogoPulse?: () => void
     let logoSignalAt = -Infinity;
     let lastLogoReaction = -Infinity;
     const nodes: SignalNode[] = Array.from({ length: NODE_COUNT }, (_, index) => {
-      const angle = index * 2.399963;
-      const radius = 0.15 + (index % 8) * 0.052;
+      const column = index % NETWORK_COLUMNS;
+      const row = Math.floor(index / NETWORK_COLUMNS);
+      const edgeX = 0.018 + (column / (NETWORK_COLUMNS - 1)) * 0.964;
+      const edgeY = 0.024 + (row / (NETWORK_ROWS - 1)) * 0.952;
+      const jitterX = column === 0 || column === NETWORK_COLUMNS - 1 ? 0 : Math.sin(index * 2.17) * 0.035;
+      const jitterY = row === 0 || row === NETWORK_ROWS - 1 ? 0 : Math.cos(index * 1.73) * 0.042;
       return {
-        x: 0.5 + Math.cos(angle) * radius,
-        y: 0.48 + Math.sin(angle) * radius * 0.78,
+        x: edgeX + jitterX,
+        y: edgeY + jitterY,
         driftX: Math.sin(index * 1.7) * 0.000025,
         driftY: Math.cos(index * 1.31) * 0.000022,
         phase: index * 0.73,
@@ -80,7 +86,8 @@ export function StartupSignalNetwork({ onLogoPulse }: { onLogoPulse?: () => void
       resize();
       context.clearRect(0, 0, width, height);
       const center = logoCenter();
-      const connectionRange = Math.min(260, Math.max(150, width * 0.15));
+      const gridDiagonal = Math.hypot(width / (NETWORK_COLUMNS - 1), height / (NETWORK_ROWS - 1));
+      const connectionRange = Math.min(390, Math.max(175, gridDiagonal * 1.42));
 
       if (!reduced) nodes.forEach((node) => {
         node.x += node.driftX;
