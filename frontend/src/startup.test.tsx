@@ -32,6 +32,18 @@ describe("DueCue startup experience", () => {
     expect(readFileSync(new URL("./App.tsx", import.meta.url), "utf8")).not.toContain("Hi, Jace");
   });
 
+  it("keeps the one-time import action last in the workspace navigation", () => {
+    const source = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+    expect(source.indexOf('label: "Import"')).toBeGreaterThan(source.indexOf('label: "Reminders"'));
+  });
+
+  it("uses a restrained set of independent startup lines", () => {
+    const source = readFileSync(new URL("./components/StartupSignalNetwork.tsx", import.meta.url), "utf8");
+    expect(source).toContain("const LINE_COUNT = 14");
+    expect(source).toContain("distanceToLine");
+    expect(source).not.toContain("NETWORK_COLUMNS");
+  });
+
   it("keeps a slow startup reassuring and recoverable", () => {
     const waiting = renderToStaticMarkup(<StartupScreen longWait />);
     const recovery = renderToStaticMarkup(<StartupRecovery message="The service is still waking up." retry={() => undefined} />);

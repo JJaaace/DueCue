@@ -1,18 +1,27 @@
 import { useEffect, useRef } from "react";
 
-type SignalNode = {
+type SignalLine = {
   x: number;
   y: number;
-  driftX: number;
-  driftY: number;
+  length: number;
+  angle: number;
+  swayX: number;
+  swayY: number;
   phase: number;
   activatedAt: number;
 };
 
-const NETWORK_COLUMNS = 9;
-const NETWORK_ROWS = 7;
-const NODE_COUNT = NETWORK_COLUMNS * NETWORK_ROWS;
+const LINE_COUNT = 14;
 const SIGNAL_SPEED = 0.38;
+
+function distanceToLine(px: number, py: number, x1: number, y1: number, x2: number, y2: number) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lengthSquared = dx * dx + dy * dy;
+  if (!lengthSquared) return Math.hypot(px - x1, py - y1);
+  const amount = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lengthSquared));
+  return Math.hypot(px - (x1 + amount * dx), py - (y1 + amount * dy));
+}
 
 export function StartupSignalNetwork({ onLogoPulse }: { onLogoPulse?: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -32,19 +41,17 @@ export function StartupSignalNetwork({ onLogoPulse }: { onLogoPulse?: () => void
     let pointer = { x: -1_000, y: -1_000, active: false };
     let logoSignalAt = -Infinity;
     let lastLogoReaction = -Infinity;
-    const nodes: SignalNode[] = Array.from({ length: NODE_COUNT }, (_, index) => {
-      const column = index % NETWORK_COLUMNS;
-      const row = Math.floor(index / NETWORK_COLUMNS);
-      const edgeX = 0.018 + (column / (NETWORK_COLUMNS - 1)) * 0.964;
-      const edgeY = 0.024 + (row / (NETWORK_ROWS - 1)) * 0.952;
-      const jitterX = column === 0 || column === NETWORK_COLUMNS - 1 ? 0 : Math.sin(index * 2.17) * 0.035;
-      const jitterY = row === 0 || row === NETWORK_ROWS - 1 ? 0 : Math.cos(index * 1.73) * 0.042;
+    const lines: SignalLine[] = Array.from({ length: LINE_COUNT }, (_, index) => {
+      const column = index % 4;
+      const row = Math.floor(index / 4);
       return {
-        x: edgeX + jitterX,
-        y: edgeY + jitterY,
-        driftX: Math.sin(index * 1.7) * 0.000025,
-        driftY: Math.cos(index * 1.31) * 0.000022,
-        phase: index * 0.73,
+        x: 0.08 + column * 0.285 + Math.sin(index * 2.17) * 0.045,
+        y: 0.09 + row * 0.275 + Math.cos(index * 1.73) * 0.055,
+        length: 0.1 + (index % 4) * 0.022,
+        angle: (-0.32 + (index % 5) * 0.16) + (row % 2 ? 0.12 : -0.08),
+        swayX: 8 + (index % 3) * 4,
+        swayY: 5 + (index % 4) * 2,
+        phase: index * 0.83,
         activatedAt: -Infinity,
       };
     });
@@ -62,7 +69,16 @@ export function StartupSignalNetwork({ onLogoPulse }: { onLogoPulse?: () => void
       }
     };
 
-    const position = (node: SignalNode) => ({ x: node.x * width, y: node.y * height });
+    const geometry = (line: SignalLine, now: number) => {
+      const motionAmount = reduced ? 0 : 1;
+      const centerX = line.x * width + Math.sin(now / 4_800 + line.phase) * line.swayX * motionAmount;
+      const centerY = line.y * height + Math.cos(now / 5_600 + line.phase) * line.swayY * motionAmount;
+      const lineLength = Math.min(260, Math.max(90, line.length * width));
+      const angle = line.angle + Math.sin(now / 7_200 + line.phase) * 0.035 * motionAmount;
+      const halfX = Math.cos(angle) * lineLength / 2;
+      const halfY = Math.sin(angle) * lineLength / 2;
+      return { centerX, centerY, x1: centerX - halfX, y1: centerY - halfY, x2: centerX + halfX, y2: centerY + halfY };
+    };
     const logoCenter = () => {
       const bounds = document.querySelector<HTMLElement>(".startup-logo-stage")?.getBoundingClientRect();
       return bounds ? { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 } : { x: width * 0.5, y: height * 0.42 };
@@ -70,9 +86,9 @@ export function StartupSignalNetwork({ onLogoPulse }: { onLogoPulse?: () => void
     const triggerSignal = (x: number, y: number) => {
       if (reduced) return;
       const now = performance.now();
-      nodes.forEach((node) => {
-        const point = position(node);
-        node.activatedAt = now + Math.hypot(point.x - x, point.y - y) / SIGNAL_SPEED;
+      lines.forEach((line) => {
+        const point = geometry(line, now);
+        line.activatedAt = now + Math.hypot(point.centerX - x, point.centerY - y) / SIGNAL_SPEED;
       });
       const logo = logoCenter();
       logoSignalAt = now + Math.hypot(logo.x - x, logo.y - y) / SIGNAL_SPEED;
@@ -86,69 +102,40 @@ export function StartupSignalNetwork({ onLogoPulse }: { onLogoPulse?: () => void
       resize();
       context.clearRect(0, 0, width, height);
       const center = logoCenter();
-      const gridDiagonal = Math.hypot(width / (NETWORK_COLUMNS - 1), height / (NETWORK_ROWS - 1));
-      const connectionRange = Math.min(390, Math.max(175, gridDiagonal * 1.42));
 
-      if (!reduced) nodes.forEach((node) => {
-        node.x += node.driftX;
-        node.y += node.driftY;
-        if (node.x < 0.04 || node.x > 0.96) node.driftX *= -1;
-        if (node.y < 0.05 || node.y > 0.93) node.driftY *= -1;
-      });
-
-      nodes.forEach((node, index) => {
-        const a = position(node);
-        nodes.slice(index + 1).forEach((other) => {
-          const b = position(other);
-          const distance = Math.hypot(a.x - b.x, a.y - b.y);
-          if (distance > connectionRange) return;
-          const pointerDistance = pointer.active ? Math.min(Math.hypot(a.x - pointer.x, a.y - pointer.y), Math.hypot(b.x - pointer.x, b.y - pointer.y)) : 1_000;
-          const pointerGlow = Math.max(0, 1 - pointerDistance / 190);
-          const activeA = Math.max(0, 1 - Math.abs(now - node.activatedAt) / 520);
-          const activeB = Math.max(0, 1 - Math.abs(now - other.activatedAt) / 520);
-          const signal = Math.max(activeA, activeB, pointerGlow * 0.62);
-          const gradient = context.createLinearGradient(a.x, a.y, b.x, b.y);
-          gradient.addColorStop(0, `rgba(238,64,91,${0.09 + signal * 0.68})`);
-          gradient.addColorStop(0.5, `rgba(255,136,153,${0.04 + signal * 0.48})`);
-          gradient.addColorStop(1, `rgba(160,38,57,${0.08 + signal * 0.58})`);
-          context.strokeStyle = gradient;
-          context.lineWidth = 0.7 + signal * 1.45;
-          context.beginPath();
-          context.moveTo(a.x, a.y);
-          context.lineTo(b.x, b.y);
-          context.stroke();
-        });
-      });
-
-      nodes.forEach((node) => {
-        const point = position(node);
-        const pointerGlow = pointer.active ? Math.max(0, 1 - Math.hypot(point.x - pointer.x, point.y - pointer.y) / 155) : 0;
-        const signal = Math.max(0, 1 - Math.abs(now - node.activatedAt) / 560);
-        const idle = 0.18 + Math.sin(now / 900 + node.phase) * 0.06;
-        const intensity = Math.max(idle, pointerGlow, signal);
-        if (signal > 0.04) {
-          context.strokeStyle = `rgba(241,68,96,${signal * 0.45})`;
-          context.lineWidth = 1;
-          context.beginPath();
-          context.arc(point.x, point.y, 5 + (1 - signal) * 24, 0, Math.PI * 2);
-          context.stroke();
-        }
-        context.shadowBlur = intensity * 20;
-        context.shadowColor = "rgba(239,55,84,.9)";
-        context.fillStyle = `rgba(241,80,105,${0.26 + intensity * 0.7})`;
+      lines.forEach((line) => {
+        const segment = geometry(line, now);
+        const pointerDistance = pointer.active ? distanceToLine(pointer.x, pointer.y, segment.x1, segment.y1, segment.x2, segment.y2) : 1_000;
+        const pointerGlow = Math.max(0, 1 - pointerDistance / 125);
+        const signal = Math.max(0, 1 - Math.abs(now - line.activatedAt) / 620);
+        const intensity = Math.max(pointerGlow, signal);
+        const gradient = context.createLinearGradient(segment.x1, segment.y1, segment.x2, segment.y2);
+        gradient.addColorStop(0, `rgba(185,41,62,${0.015 + intensity * 0.2})`);
+        gradient.addColorStop(0.5, `rgba(246,76,102,${0.1 + intensity * 0.72})`);
+        gradient.addColorStop(1, `rgba(185,41,62,${0.015 + intensity * 0.2})`);
+        context.shadowBlur = intensity * 18;
+        context.shadowColor = "rgba(239,55,84,.75)";
+        context.strokeStyle = gradient;
+        context.lineWidth = 0.75 + intensity * 1.35;
         context.beginPath();
-        context.arc(point.x, point.y, 1.7 + intensity * 2.2, 0, Math.PI * 2);
-        context.fill();
+        context.moveTo(segment.x1, segment.y1);
+        context.lineTo(segment.x2, segment.y2);
+        context.stroke();
         context.shadowBlur = 0;
+
+        if (intensity > 0.12) {
+          const travel = (now / 900 + line.phase) % 1;
+          const x = segment.x1 + (segment.x2 - segment.x1) * travel;
+          const y = segment.y1 + (segment.y2 - segment.y1) * travel;
+          context.fillStyle = `rgba(255,180,191,${intensity * 0.8})`;
+          context.beginPath();
+          context.arc(x, y, 1.4 + intensity, 0, Math.PI * 2);
+          context.fill();
+        }
       });
 
       if (pointer.active) {
         const pointerStrength = Math.max(0, 1 - Math.hypot(pointer.x - center.x, pointer.y - center.y) / 320);
-        context.strokeStyle = `rgba(239,67,94,${0.06 + pointerStrength * 0.16})`;
-        context.lineWidth = 1;
-        context.beginPath();
-        context.arc(pointer.x, pointer.y, 32 + pointerStrength * 18, 0, Math.PI * 2);
-        context.stroke();
         if (pointerStrength > 0.82 && now - lastLogoReaction > 900) {
           lastLogoReaction = now;
           onLogoPulseRef.current?.();
@@ -170,7 +157,8 @@ export function StartupSignalNetwork({ onLogoPulse }: { onLogoPulse?: () => void
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("pointerleave", onPointerLeave);
     window.addEventListener("pointerdown", onPointerDown, { passive: true });
-    window.addEventListener("resize", resize);
+    const onResize = () => { resize(); if (reduced) draw(); };
+    window.addEventListener("resize", onResize);
     motion.addEventListener("change", onMotionChange);
     draw();
     return () => {
@@ -178,7 +166,7 @@ export function StartupSignalNetwork({ onLogoPulse }: { onLogoPulse?: () => void
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerleave", onPointerLeave);
       window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("resize", resize);
+      window.removeEventListener("resize", onResize);
       motion.removeEventListener("change", onMotionChange);
     };
   }, []);
