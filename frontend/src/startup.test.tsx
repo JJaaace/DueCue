@@ -41,6 +41,7 @@ describe("DueCue startup experience", () => {
     const source = readFileSync(new URL("./components/StartupSignalNetwork.tsx", import.meta.url), "utf8");
     expect(source).toContain("const LINE_COUNT = 14");
     expect(source).toContain("distanceToLine");
+    expect(source).toContain("idleGlow");
     expect(source).not.toContain("NETWORK_COLUMNS");
   });
 
