@@ -12,7 +12,7 @@ const formatStartWindow = (date: Date) => new Intl.DateTimeFormat("en-US", { mon
 export const privateExplanationFor = (explanation: string, relationship: string) => relationship === "parent_guardian" && /target grade|course is .*below/i.test(explanation) ? "DueCue recommends starting now based on the deadline, effort, and coursework timing." : explanation;
 type DigestTask = { title: string; dueAt: Date; type: string; course: { code: string; currentGradePercent: number | null; targetGradePercent: number | null } };
 export function buildWeeklyDigestText(tasks: Array<{ task: DigestTask; priorityScore: number; recommendedStartAt: Date }>, changes: Array<{ eventType: string; task: { title: string } }>, learningLabel?: string, includeGradeSignal = true, now = new Date()) {
-  const week = tasks.filter(({ task }) => task.dueAt.getTime() <= now.getTime() + 7 * 86_400_000).sort((a, b) => b.priorityScore - a.priorityScore);
+  const week = tasks.filter(({ task }) => task.dueAt > now && task.dueAt.getTime() <= now.getTime() + 7 * 86_400_000).sort((a, b) => b.priorityScore - a.priorityScore);
   const top = week.slice(0, 3); const dayCounts = new Map<string, number>();
   week.forEach(({ task }) => { const day = task.dueAt.toLocaleDateString("en-US", { weekday: "long" }); dayCounts.set(day, (dayCounts.get(day) ?? 0) + 1); });
   const heavy = [...dayCounts.entries()].find(([, count]) => count >= 2);
@@ -26,12 +26,12 @@ export function buildWeeklyDigestText(tasks: Array<{ task: DigestTask; priorityS
 }
 
 export async function generateNotificationPreviews(userId: string) {
-  const [recommendations, user, recipients] = await Promise.all([prisma.recommendation.findMany({ where: { userId, task: { providerId: { not: "mock_canvas" }, removedAt: null, status: { notIn: ["done", "dismissed"] } } }, include: { task: { include: { course: true } } } }), prisma.user.findUnique({ where: { id: userId }, include: { settings: true } }), prisma.reminderRecipient.findMany({ where: { userId, enabled: true } })]);
+  const [recommendations, user, recipients] = await Promise.all([prisma.recommendation.findMany({ where: { userId, task: { providerId: { not: "mock_canvas" }, removedAt: null, status: { notIn: ["done", "dismissed"] }, dueAt: { gt: new Date() } } }, include: { task: { include: { course: true } } } }), prisma.user.findUnique({ where: { id: userId }, include: { settings: true } }), prisma.reminderRecipient.findMany({ where: { userId, enabled: true } })]);
   let created = 0;
   for (const recommendation of recommendations) {
     const task = recommendation.task;
     if (task.removedAt || ["done", "dismissed"].includes(task.status)) continue;
-    const type = task.status === "overdue" ? "overdue" : task.status === "start_now" ? "start_recommendation" : "due_soon";
+    const type = task.status === "start_now" ? "start_recommendation" : "due_soon";
     const due = task.dueAt.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     for (const recipient of recipients) {
       const enabledForType = type === "start_recommendation" ? recipient.startWindowEnabled : type === "due_soon" ? recipient.dueSoonEnabled : true;
@@ -57,7 +57,7 @@ export async function generateNotificationPreviews(userId: string) {
 
 export async function generateWeeklyDigestPreviews(userId: string) {
   const [recommendations, events, preferences, recipients, user] = await Promise.all([
-    prisma.recommendation.findMany({ where: { userId, task: { providerId: { not: "mock_canvas" }, removedAt: null, status: { notIn: ["done", "dismissed"] } } }, include: { task: { include: { course: true } }, }, orderBy: { priorityScore: "desc" } }),
+    prisma.recommendation.findMany({ where: { userId, task: { providerId: { not: "mock_canvas" }, removedAt: null, status: { notIn: ["done", "dismissed"] }, dueAt: { gt: new Date() } } }, include: { task: { include: { course: true } }, }, orderBy: { priorityScore: "desc" } }),
     prisma.taskEvent.findMany({ where: { userId, task: { providerId: { not: "mock_canvas" } }, eventType: { in: ["created", "due_date_changed", "points_changed"] } }, include: { task: { select: { title: true } } }, orderBy: { createdAt: "desc" }, take: 3 }),
     prisma.learningPreference.findMany({ where: { userId }, orderBy: { updatedAt: "desc" }, take: 1 }),
     prisma.reminderRecipient.findMany({ where: { userId, enabled: true, weeklyDigestEnabled: true } }),

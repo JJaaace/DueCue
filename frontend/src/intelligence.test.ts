@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { buildTodayPlan, isTaskActive } from "./intelligence";
+import { buildTodayPlan, isTaskActive, isTaskCurrent } from "./intelligence";
 
 const task = (id: string, dueAt: string, status = "overdue") => ({ id, title: id, type: "assignment", dueAt, status, estimatedMinutes: 60, course: { code: "CSE", currentGradePercent: null, targetGradePercent: null, courseImportance: "normal" as const }, recommendations: [{ recommendedStartAt: dueAt, priorityScore: 70 }] });
 
 describe("imported task lifecycle planning", () => {
   const now = new Date("2026-10-14T16:00:00.000Z");
 
-  it("labels overdue work accurately and never as due within a day", () => {
+  it("keeps past-due work out of the actionable plan", () => {
     const plan = buildTodayPlan([task("late", "2026-10-12T16:00:00.000Z")], [], now);
-    expect(plan[0]?.reason).toContain("Overdue by 2 days");
-    expect(plan[0]?.reason).not.toContain("Due within a day");
+    expect(plan).toHaveLength(0);
+    expect(isTaskCurrent(task("late", "2026-10-12T16:00:00.000Z"), now)).toBe(false);
   });
 
   it("excludes completed, dismissed, and stale overdue tasks from Today's Plan", () => {

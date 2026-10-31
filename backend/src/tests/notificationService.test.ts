@@ -20,4 +20,14 @@ describe("notification deduplication policy", () => {
     expect(student).toContain("WebAssign"); expect(student).toContain("Recent change"); expect(student).toContain("below your target");
     expect(guardian).not.toContain("below your target"); expect(guardian).not.toContain("70");
   });
+  it("leaves past-due coursework out of the week-ahead digest", () => {
+    const course = { code: "CSE 2221", currentGradePercent: null, targetGradePercent: null };
+    const tasks = [
+      { priorityScore: 100, recommendedStartAt: new Date("2026-08-09"), task: { title: "Old assignment", dueAt: new Date("2026-08-10"), type: "assignment", course } },
+      { priorityScore: 70, recommendedStartAt: new Date("2026-08-12"), task: { title: "Next assignment", dueAt: new Date("2026-08-14"), type: "assignment", course } },
+    ];
+    const digest = buildWeeklyDigestText(tasks, [], undefined, true, new Date("2026-08-11"));
+    expect(digest).toContain("Next assignment");
+    expect(digest).not.toContain("Old assignment");
+  });
 });

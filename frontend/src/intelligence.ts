@@ -11,10 +11,10 @@ export type IntelligenceTask = {
 
 export type Risk = { label: "Low" | "Watch" | "Start today" | "At risk" | "Overdue"; score: number; reason: string };
 const DAY = 86_400_000;
-const STALE_OVERDUE_DAYS = 14;
 const hoursUntil = (value: string, now: Date) => (new Date(value).getTime() - now.getTime()) / 3_600_000;
 const dayKey = (value: string) => new Date(value).toDateString();
 export const isTaskActive = (task: Pick<IntelligenceTask, "status">) => !["done", "dismissed"].includes(task.status);
+export const isTaskCurrent = (task: Pick<IntelligenceTask, "status" | "dueAt">, now = new Date()) => isTaskActive(task) && new Date(task.dueAt).getTime() > now.getTime();
 export const overdueDays = (value: string, now = new Date()) => Math.max(1, Math.ceil((now.getTime() - new Date(value).getTime()) / DAY));
 
 export function calculateTaskRisk(task: IntelligenceTask, allTasks: IntelligenceTask[] = [], changedTitles: string[] = [], now = new Date()): Risk {
@@ -39,7 +39,7 @@ export function calculateTaskRisk(task: IntelligenceTask, allTasks: Intelligence
 }
 
 export function buildTodayPlan<T extends IntelligenceTask>(tasks: T[], changedTitles: string[] = [], now = new Date()) {
-  return tasks.filter(isTaskActive).filter((task) => hoursUntil(task.dueAt, now) >= -STALE_OVERDUE_DAYS * 24).map((task) => {
+  return tasks.filter((task) => isTaskCurrent(task, now)).map((task) => {
     const risk = calculateTaskRisk(task, tasks, changedTitles, now);
     const dueHours = hoursUntil(task.dueAt, now);
     const rec = task.recommendations[0];
@@ -52,7 +52,7 @@ export function buildTodayPlan<T extends IntelligenceTask>(tasks: T[], changedTi
 }
 
 export function detectWorkloadRadar<T extends IntelligenceTask>(tasks: T[], changedTitles: string[] = [], now = new Date()) {
-  const active = tasks.filter(isTaskActive);
+  const active = tasks.filter((task) => isTaskCurrent(task, now));
   const dueGroups = Object.values(active.reduce<Record<string, T[]>>((groups, task) => { (groups[dayKey(task.dueAt)] ??= []).push(task); return groups; }, {}));
   const maxDue = dueGroups.sort((a, b) => b.length - a.length)[0] ?? [];
   const startGroups = Object.values(active.filter((task) => task.recommendations[0]).reduce<Record<string, T[]>>((groups, task) => { (groups[dayKey(task.recommendations[0].recommendedStartAt)] ??= []).push(task); return groups; }, {}));
@@ -96,7 +96,7 @@ export function buildAvailableTimePlan<T extends IntelligenceTask>(tasks: T[], a
   let remainingMinutes = minutes;
 
   const urgentTopTask = ranked[0];
-  if (urgentTopTask && ["Overdue", "At risk"].includes(urgentTopTask.risk.label) && urgentTopTask.effortMinutes > remainingMinutes) {
+  if (urgentTopTask && urgentTopTask.risk.label === "At risk" && urgentTopTask.effortMinutes > remainingMinutes) {
     selected.push({ ...urgentTopTask, plannedMinutes: remainingMinutes, completesTask: false });
     selectedIds.add(urgentTopTask.task.id);
     remainingMinutes = 0;
@@ -142,7 +142,7 @@ export function buildWeeklyGamePlan<T extends IntelligenceTask>(tasks: T[], chan
 }
 
 export function findBatchSuggestions<T extends IntelligenceTask>(tasks: T[], now = new Date()) {
-  const active = tasks.filter((task) => isTaskActive(task) && hoursUntil(task.dueAt, now) > -24);
+  const active = tasks.filter((task) => isTaskCurrent(task, now));
   const suggestions: Array<{ title: string; reason: string; tasks: T[]; minutes: number }> = [];
   const quick = active.filter((task) => (task.estimatedMinutes ?? 60) <= 30).slice(0, 3);
   if (quick.length >= 2) suggestions.push({ title: "Quick wins", reason: `${quick.length} short tasks can fit into one focused block.`, tasks: quick, minutes: quick.reduce((sum, task) => sum + (task.estimatedMinutes ?? 30), 0) });
